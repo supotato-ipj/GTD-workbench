@@ -1,6 +1,7 @@
 # 任务梳理台（GTD 工作台）· DSH 插件
 
-一个包，Host 半边 + Client 半边。**只读**：不写滴答、不写仓库文件（ADR-0006）。
+一个包，Host 半边 + Client 半边。**不写任何本地文件**（ADR-0006）；滴答那边只开**一个**写口：
+**完成**（写 `status=2`，单口径，不建核销台账）。「改期」是下一票（issue #10）。
 唯一写到浏览器本地的是「动画差异基准」（localStorage），ADR-0007 明写允许，不落仓库。
 
 ## 装
@@ -44,6 +45,13 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
   task filter --projects 7c4e00000000000000000002 --status 0 --json
 ```
 
+写口手动验收（**会真的勾掉那条**，先拿一条不要紧的动作试）：
+
+```
+node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
+  task complete 7c4e00000000000000000002 <动作 id>
+```
+
 **`--status 0` 不能省**：不带状态过滤时，收集箱与日历单次就会撞满 CLI 的 200 条上限（实测）。
 
 ## 记录页目录怎么配
@@ -85,8 +93,10 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `client.js` | Client 半边：左栏图标 + 主区面板（**外壳**与**视图**两层，`React.createElement`，不引构建步骤） |
 | `lib/containers.js` | 六个纸箱与滴答清单 id（用完整 24 位 id） |
 | `lib/config.js` | 本地私有配置 `local-config.json` 的只读读取 |
-| `lib/dida.js` | 用 `process.execPath` + 真实入口调滴答；只跑读命令（`task filter` / `task completed`） |
-| `lib/route.js` | 路由处理函数：访问守卫 + 取数编排 + 快照／失败原因 |
+| `lib/dida.js` | 用真实入口 + 真 node 调滴答；允许集合＝两条读命令 + 一个写命令（`task complete`）；每条命令带超时 |
+| `lib/route.js` | 读路由处理函数：访问守卫 + 取数编排 + 快照／失败原因（写路由复用它的取数与失败映射） |
+| `lib/actions.js` | 写动作的校验与定位（纯函数）：动作类型、目标 id、参数；目标动作属于哪个清单 |
+| `lib/write-route.js` | 写路由处理函数：执行写动作 → 重新取数 → 回一份新快照 |
 | `lib/snapshot.js` | 滴答原始任务 → 工作台快照（两个进程之间唯一的契约） |
 | `lib/board.js` | 六箱归位规则：画便贴还是箱签、默不默认折叠、日历箱的「外部约定时刻」口径 |
 | `lib/timeline.js` | 天刻度四段（今天／明天／本周／以后）与默认视野 |
@@ -100,6 +110,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `lib/diff.js` | 状态迁移差异检测（只演真实发生过的变化） |
 
 取数路由：`GET /gtd-workbench/tasks`（顶层路径，带命名空间前缀）。
+写动作路由：`POST /gtd-workbench/actions`（见下）。
 
 ## 画布上有什么
 
@@ -155,6 +166,59 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
   免得 `[data-note-id="…"]` 这种选择器命中错东西。
 - **抽屉里说清「为什么没进焦点」**：便贴 `eligible` 为 false 时，抽屉里出现
   `data-role="drawer-ineligible"`（带 `data-reason`），原因值原样取 Host 给的 `ineligibleReason`。
+
+## 写口：完成（`POST /gtd-workbench/actions`）
+
+写入走**同一条 HTTP 契约的写方向**：读是 `GET /gtd-workbench/tasks`，写是 `POST /gtd-workbench/actions`。
+
+**请求体**：
+
+```json
+{ "动作": "complete", "目标id": "<动作 id>", "参数": {} }
+```
+
+- `动作`：动作类型。**现在只认 `complete`**（完成）。「改期」是 issue #10，届时**同一个路由**加一个动作类型即可。
+- `目标id`：目标动作的 id（非空字符串）。
+- `参数`：动作参数，可省。「完成」用不上；「改期」要带新的截止日。
+
+**响应体**：
+
+| 情形 | 状态码 | 响应体 |
+|---|---|---|
+| 写成功 | 200 | `{ "ok": true, "动作": "complete", "目标id": "…", "快照": { … } }` |
+| 写成功但刷新没成 | 200 | `{ "ok": true, "动作": "…", "目标id": "…", "快照": null, "刷新错误": { "code": "…", "message": "…" } }` |
+| 失败 | 见下 | `{ "error": { "code": "…", "message": "人能读的失败原因" } }` |
+
+「快照」是**写成功之后重新取的一份**，形状与 `GET` 的响应体完全一致——客户端换主卡不必再发一次读请求。
+
+**失败类别**（读方向与写方向同一套）：
+
+| code | 状态码 | 含义 |
+|---|---|---|
+| `not-authenticated` | 401 | 滴答未登录／登录态失效 |
+| `cli-unavailable` | 503 | 找不到滴答 CLI 入口或跑它的 node |
+| `cli-failed` | 502 | CLI 跑挂了、输出不对、**或者超时** |
+| `not-found` | 404 | 目标动作不存在（写方向专有） |
+| `invalid-argument` | 400 | 参数非法或动作类型不支持（写方向专有） |
+| `internal-error` | 500 | 认不出的错误 |
+
+写失败**不会**表现为已完成：失败响应体里没有 `ok`、也没有 `快照`。
+
+**滴答 CLI**：允许集合是显式的——两条读命令（`task filter` / `task completed`）加上**一个**写命令
+`task complete`。其余写命令（新建、删除、改期……）拼不进 argv。argv 全仓库只在
+`lib/dida.js` 的 `buildDidaArgs` 一处拼：
+
+```
+task filter    --projects <清单 id> --status 0 --json
+task completed --projects <清单 id> --start-date … --end-date … --json
+task complete  <清单 id> <动作 id>
+```
+
+清单 id 从**目标动作所在的纸箱**来（快照里每个容器都带 `projectId`）；收集箱的 id 不是 24 位
+（是 `inbox…`），照样能用。
+
+**超时**：每条 CLI 调用都有超时（默认 30 秒，环境变量 `GTD_DIDA_TIMEOUT_MS` 可改）。
+超时就杀掉子进程、按 `cli-failed` 收场——不让路由一直挂着。
 
 ## 本周主攻带改名（v2 语义改名）
 

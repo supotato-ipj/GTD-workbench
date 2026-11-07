@@ -1,0 +1,137 @@
+/**
+ * 写动作的纯函数：校验、目标定位、失败码映射。
+ *
+ * 这一层不碰 HTTP、不碰滴答：只回答「这个请求说得通吗」「目标动作在哪个清单里」。
+ */
+
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import { ActionError, WRITE_ACTIONS, locateInContainer, validateAction } from '../lib/actions.js';
+import { describeFailure } from '../lib/route.js';
+
+const CONTAINERS = [
+  { key: 'inbox', name: '收集箱', projectId: 'inbox9000000001' },
+  { key: 'execution', name: '执行', projectId: '7c4e00000000000000000002' },
+];
+
+test('动作校验：动作类型、目标 id、参数都合法时给出规范化的动作', () => {
+  const parsed = validateAction({ 动作: 'complete', 目标id: '  abc123  ', 参数: { 备注: '随手写的' } });
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.value, { action: 'complete', taskId: 'abc123', params: { 备注: '随手写的' } });
+});
+
+test('动作校验：没给参数时按空对象算，不算非法', () => {
+  const parsed = validateAction({ 动作: 'complete', 目标id: 'abc123' });
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.value.params, {});
+});
+
+test('动作校验：缺动作类型 → invalid-argument', () => {
+  for (const body of [{}, { 目标id: 'abc123' }, { 动作: '', 目标id: 'abc123' }, { 动作: 42, 目标id: 'abc123' }]) {
+    const parsed = validateAction(body);
+    assert.equal(parsed.ok, false, `这份请求体不该通过：${JSON.stringify(body)}`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+});
+
+test('动作校验：不支持的动作 → invalid-argument', () => {
+  const parsed = validateAction({ 动作: 'reschedule', 目标id: 'abc123' });
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.code, 'invalid-argument');
+  assert.match(parsed.message, /不支持的动作/);
+});
+
+test('动作校验：目标 id 不是非空字符串 → invalid-argument', () => {
+  for (const target of [123, '', '   ', null, undefined, {}]) {
+    const parsed = validateAction({ 动作: 'complete', 目标id: target });
+    assert.equal(parsed.ok, false, `目标 id ${JSON.stringify(target)} 不该通过`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+});
+
+test('动作校验：参数不是对象 → invalid-argument', () => {
+  for (const params of ['随手写的', 42, [], null]) {
+    const parsed = validateAction({ 动作: 'complete', 目标id: 'abc123', 参数: params });
+    assert.equal(parsed.ok, false, `参数 ${JSON.stringify(params)} 不该通过`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+});
+
+test('动作校验：请求体不是一个 JSON 对象 → invalid-argument', () => {
+  for (const body of [null, undefined, '完成', 42, [], true]) {
+    const parsed = validateAction(body);
+    assert.equal(parsed.ok, false, `请求体 ${JSON.stringify(body)} 不该通过`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+});
+
+test('写口：只开了「完成」一个动作类型', () => {
+  assert.deepEqual(WRITE_ACTIONS, ['complete']);
+});
+
+test('目标定位：在纸箱里找到目标动作，给出它所在清单的 id', () => {
+  const located = locateInContainer({
+    container: CONTAINERS[1],
+    tasks: [{ id: 'abc123', projectId: '7c4e00000000000000000002' }],
+    taskId: 'abc123',
+  });
+  assert.ok(located !== null);
+  assert.equal(located.container.key, 'execution');
+  assert.equal(located.projectId, '7c4e00000000000000000002');
+});
+
+test('目标定位：收集箱里的动作也认（收集箱的 id 不是 24 位）', () => {
+  const located = locateInContainer({
+    container: CONTAINERS[0],
+    tasks: [{ id: 'inbox-task', projectId: 'inbox9000000001' }],
+    taskId: 'inbox-task',
+  });
+  assert.ok(located !== null);
+  assert.equal(located.container.key, 'inbox');
+  assert.equal(located.projectId, 'inbox9000000001');
+  assert.notEqual(located.projectId.length, 24);
+});
+
+test('目标定位：条目上没带清单 id 时退回纸箱配置的 id', () => {
+  const located = locateInContainer({
+    container: CONTAINERS[1],
+    tasks: [{ id: 'abc123' }],
+    taskId: 'abc123',
+  });
+  assert.ok(located !== null);
+  assert.equal(located.projectId, '7c4e00000000000000000002');
+});
+
+test('目标定位：找不到就是 null，不抛', () => {
+  const located = locateInContainer({
+    container: CONTAINERS[1],
+    tasks: [{ id: 'abc123', projectId: '7c4e00000000000000000002' }],
+    taskId: '根本没有的那条',
+  });
+  assert.equal(located, null);
+  assert.equal(locateInContainer({ container: CONTAINERS[1], tasks: [], taskId: '' }), null);
+});
+
+test('失败码映射：读方向与写方向同一套语义', () => {
+  const cases = [
+    ['not-authenticated', 401],
+    ['cli-unavailable', 503],
+    ['cli-failed', 502],
+    ['not-found', 404],
+    ['invalid-argument', 400],
+  ];
+  for (const [code, status] of cases) {
+    const failure = describeFailure(new ActionError(code, `失败原因：${code}`));
+    assert.equal(failure.status, status, `${code} 的状态码不对`);
+    assert.equal(failure.code, code);
+    assert.equal(failure.message, `失败原因：${code}`);
+  }
+});
+
+test('失败码映射：认不出的错误一律 internal-error（500），不糊成别的失败', () => {
+  const failure = describeFailure(new Error('炸了'));
+  assert.equal(failure.status, 500);
+  assert.equal(failure.code, 'internal-error');
+  assert.equal(failure.message, '炸了');
+});

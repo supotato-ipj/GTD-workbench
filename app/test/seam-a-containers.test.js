@@ -119,8 +119,8 @@ test('接缝 A：取数按容器分别调用，一次一个清单，且只取未
 test('接缝 A：只取未完成的取数命令带 --status 0', () => {
   const argv = buildDidaArgs('task filter', { projectId: INBOX_ID, status: 0 });
   assert.deepEqual(argv, ['task', 'filter', '--projects', INBOX_ID, '--status', '0', '--json']);
-  // 写命令仍然拼不进来（ADR-0006 只读护栏）。
-  assert.throws(() => buildDidaArgs('task create', { projectId: INBOX_ID }), /非只读命令/);
+  // 写命令仍然拼不进来（ADR-0006 护栏：写口只开「完成」一个）。
+  assert.throws(() => buildDidaArgs('task create', { projectId: INBOX_ID }), /拒绝执行/);
 });
 
 test('接缝 A：跨容器串位数为零——每个条目只出现在自己容器的组里', async () => {

@@ -1,5 +1,7 @@
 /**
- * 本机 HTTP 路由：工作台的取数入口。
+ * 本机 HTTP 路由：工作台的取数入口（读方向）。
+ *
+ * 写方向（完成等写动作）在 `app/lib/write-route.js`，走同一条 HTTP 契约的另一个方向。
  *
  * 为什么走 HTTP 路由而不是自定义 remote（ADR-0008）：客户端那侧的 remote 命名空间是静态生成进
  * `dsh-api-remotes` 的，新增命名空间要走 typert 代码生成；HTTP 路由是已验证的路。
@@ -8,6 +10,7 @@
  * 失败要给出**可区分**的原因——「未登录」和「别的失败」在看板上不能混成一句话，也不能返回空快照。
  */
 
+import { ActionError } from './actions.js';
 import { CONTAINERS } from './containers.js';
 import { buildSnapshot, OPEN_STATUS } from './snapshot.js';
 import { DidaError } from './dida.js';
@@ -17,11 +20,13 @@ import { localDateText } from './timeline.js';
 /** 取数路由的路径：顶层路径，带命名空间前缀。 */
 export const TASKS_ROUTE_PATH = '/gtd-workbench/tasks';
 
-/** 失败类别 → HTTP 状态码。 */
-const FAILURE_STATUS = {
+/** 失败类别 → HTTP 状态码。读方向与写方向同一套。 */
+export const FAILURE_STATUS = {
   'not-authenticated': 401,
   'cli-unavailable': 503,
   'cli-failed': 502,
+  'not-found': 404,
+  'invalid-argument': 400,
 };
 
 /**
@@ -30,7 +35,7 @@ const FAILURE_STATUS = {
  * @param {number} status - HTTP 状态码。
  * @param {object} payload - 响应体。
  */
-function sendJson(res, status, payload) {
+export function sendJson(res, status, payload) {
   res.statusCode = status;
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.setHeader('cache-control', 'no-store');
@@ -43,9 +48,13 @@ function sendJson(res, status, payload) {
  * @returns {{ status: number, code: string, message: string }} 失败描述。
  */
 export function describeFailure(error) {
-  if (error instanceof DidaError) {
+  if (error instanceof DidaError || error instanceof ActionError) {
+    const status = FAILURE_STATUS[error.code];
+    if (status === undefined) {
+      return { status: 500, code: 'internal-error', message: error.message };
+    }
     return {
-      status: FAILURE_STATUS[error.code] ?? 502,
+      status,
       code: error.code,
       message: error.message,
     };
@@ -73,6 +82,57 @@ function safeRecords(loadRecords) {
   } catch {
     return [];
   }
+}
+
+/**
+ * 分容器取数：一次一个清单。
+ *
+ * 一次拉全部容器会撞上 CLI 单次 200 条的上限，所以必须分容器调用；
+ * 只取未完成（`--status 0`），否则同一个容器自己就能撞满上限。
+ * @param {object} options - 选项。
+ * @param {object[]} options.containers - 六个纸箱。
+ * @param {(args: { projectId: string, status: number }) => Promise<object[]>} options.runDida - 取一个清单下的动作。
+ * @returns {Promise<Map<string, object[]>>} 按清单 id 归好的原始条目。
+ */
+export async function readTasksByProject({ containers, runDida }) {
+  const tasksByProject = new Map();
+  for (const container of containers) {
+    tasksByProject.set(
+      container.projectId,
+      await runDida({ projectId: container.projectId, status: OPEN_STATUS }),
+    );
+  }
+  return tasksByProject;
+}
+
+/**
+ * 取数并组装一份快照（读方向与写方向共用）。
+ *
+ * 写成功之后要**重新取一次数**再回给客户端，靠的就是这一段——
+ * 客户端换主卡不必再发一次读请求。
+ * @param {object} options - 选项。
+ * @param {object[]} options.containers - 六个纸箱。
+ * @param {(args: { projectId: string, status: number }) => Promise<object[]>} options.runDida - 取一个清单下的动作。
+ * @param {string} options.timeZone - 截止时间换算到的时区。
+ * @param {Date} options.generatedAt - 生成时刻。
+ * @param {() => object[]} [options.loadRecords] - 读 markdown 侧记录。
+ * @param {(args: { projectIds: string[], startDate: string, endDate: string }) => Promise<object[]>} [options.runCompleted]
+ *   按日期区间取已完成条目（已沉底区用）。
+ * @returns {Promise<object>} 快照。
+ */
+export async function collectSnapshot({ containers, runDida, timeZone, generatedAt, loadRecords = () => [], runCompleted }) {
+  const tasksByProject = await readTasksByProject({ containers, runDida });
+  // 已沉底区走另一条命令、按日期区间取已完成，**不与未完成混在一次调用里**。
+  const completedTasks = await readCompleted({ runCompleted, containers, timeZone, generatedAt });
+  return buildSnapshot({
+    containers,
+    tasksByProject,
+    timeZone,
+    generatedAt: generatedAt.toISOString(),
+    // markdown 侧读不到不该把整块板子打掉：loadRecords 自己兜住，这里再兜一层。
+    records: safeRecords(loadRecords),
+    completedTasks,
+  });
 }
 
 /**
@@ -113,26 +173,13 @@ export function createTasksHandler({
       return;
     }
     try {
-      const generatedAt = now();
-      const tasksByProject = new Map();
-      for (const container of containers) {
-        // 分容器调用，一次一个清单：一次拉全部容器会撞上 CLI 单次 200 条的上限。
-        // 只取未完成（--status 0），否则同一个容器自己就能撞满上限。
-        tasksByProject.set(
-          container.projectId,
-          await runDida({ projectId: container.projectId, status: OPEN_STATUS }),
-        );
-      }
-      // 已沉底区走另一条命令、按日期区间取已完成，**不与未完成混在一次调用里**。
-      const completedTasks = await readCompleted({ runCompleted, containers, timeZone, generatedAt });
-      const snapshot = buildSnapshot({
+      const snapshot = await collectSnapshot({
         containers,
-        tasksByProject,
+        runDida,
+        runCompleted,
+        loadRecords,
         timeZone,
-        generatedAt: generatedAt.toISOString(),
-        // markdown 侧读不到不该把整块板子打掉：loadRecords 自己兜住，这里再兜一层。
-        records: safeRecords(loadRecords),
-        completedTasks,
+        generatedAt: now(),
       });
       sendJson(res, 200, snapshot);
     } catch (error) {
