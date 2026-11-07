@@ -49,3 +49,12 @@ If the concept you need isn't in the glossary yet, that's a signal: either you'r
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
 > _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+
+## ADR conventions
+
+`docs/adr/` holds one decision per file, named `NNNN-<中文 slug>.md` (`0006-工作台是只读视图.md`). Numbers are sequential and never reused.
+
+- **Status marker** goes on the first line: `> **Status**: accepted（YYYY-MM-DD）`. A superseded ADR reads `superseded by [ADR-XXXX](....)（YYYY-MM-DD）`; a partial revision reads `· 修订 [ADR-XXXX](....) 中「...」一条`.
+- **Never delete or rewrite an existing ADR.** To change a decision, **append** a `## 修订（YYYY-MM-DD）` section saying what is kept, what is overturned, and why. The overturned clause stays in the body; the revision section declares its fate.
+- **Superseding** is marked with `superseded by` plus a link to the new ADR. The old file's body is kept as-is.
+- Every ADR states 背景 / 决定 / 理由 / 后果 (后果 = 代价). Read the existing files in this directory to match the house style before writing a new one.
