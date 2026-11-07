@@ -5,7 +5,7 @@
  * - 读：`GET /gtd-workbench/tasks` → 一份快照；
  * - 写：`POST /gtd-workbench/actions` → 完成等写动作，成功后回一份新快照。
  *
- * 不写任何本地文件（ADR-0006）；写滴答只开「完成」这一个写口（ADR-0006 修订）。
+ * 不写任何本地文件（ADR-0006）；写滴答只开「完成」与「改期」这两个写口（ADR-0006 修订）。
  */
 
 import { createTasksHandler, TASKS_ROUTE_PATH } from './lib/route.js';
