@@ -29,6 +29,16 @@
  *
  * `窗口` 条目上的 `类` 是本模块对 ADR-0011 形状的**唯一扩展**：`连续` 的窗口适合派深度活，
  * `可打断` 的窗口适合派事务活（ADR-0010「时段驱动」）。不写就按 `可打断` 算。
+ *
+ * 口径（ADR-0011 修订）：
+ * - **窗口时长** = 窗口扣掉不可占段之后的可支配时长；
+ * - **日清成本**分两拨：落在可用窗口内的从可排时间里扣，落在窗口外的不占可排时间
+ *   （那个时刻本来就不装活），但仍然算进「今日日清」的总数；
+ * - **插入损耗**按全天全额预留（保守口径）；
+ * - 可排时间与剩余可排时间**都不为负**。
+ *
+ * `深度.估时系数` **不参与估时**（估时改用滴答的专注估算字段），它是惰性字段：
+ * 保留在形状里是为了不破坏既有配置，但别以为它还在起作用。
  */
 
 /** 通用默认容量配置。示例值全部虚构，真实值不进本仓库（ADR-0011）。 */
@@ -65,17 +75,47 @@ export function minutesOfClock(text) {
 }
 
 /**
- * 两段时间的重叠长度。
- * @param {number} leftStart - 左边起点（分钟）。
- * @param {number} leftEnd - 左边终点（分钟）。
- * @param {number} rightStart - 右边起点（分钟）。
- * @param {number} rightEnd - 右边终点（分钟）。
- * @returns {number} 重叠的分钟数。
+ * 某个时刻落在**可用窗口**里没有。
+ *
+ * 「可用窗口」= 窗口扣掉与不可占段重叠的那部分：
+ * 午休那段既不是窗口，也不是可支配时间——落在那里的日清项不占可排时间。
+ * @param {number | null} at - 时刻（当天第几分钟）；null = 时段没写。
+ * @param {object[]} windows - 窗口。
+ * @param {object[]} blocked - 不可占段。
+ * @returns {boolean} 落在可用窗口里就是 true。
  */
-function overlapMinutes(leftStart, leftEnd, rightStart, rightEnd) {
-  const start = Math.max(leftStart, rightStart);
-  const end = Math.min(leftEnd, rightEnd);
-  return end > start ? end - start : 0;
+function isAtAvailableInWindow(at, windows, blocked) {
+  // 时段没写（写坏了）：当它是今天的固定成本，保守地按「落在窗口内」算——
+  // 宁可少报可排时间，也不要报一个装不下的数。
+  if (at === null) return true;
+  for (const window of windows) {
+    if (at < window.start || at >= window.end) continue;
+    const inBlocked = blocked.some((segment) => at >= segment.start && at < segment.end);
+    if (!inBlocked) return true;
+  }
+  return false;
+}
+
+/**
+ * 一个窗口扣掉与不可占段重叠的部分之后，还剩下哪些**可支配**片段。
+ *
+ * 午休不是可支配时间：窗口 09:00–13:00 里午休 12:00–13:00 时，可用片段只有 09:00–12:00。
+ * @param {object} window - 窗口（`start`／`end` 是分钟）。
+ * @param {object[]} blocked - 不可占段。
+ * @returns {object[]} 可支配片段（`start`／`end` 是分钟）。
+ */
+function availableSegmentsOf(window, blocked) {
+  const segments = [];
+  const sorted = [...blocked].sort((left, right) => left.start - right.start);
+  let cursor = window.start;
+  for (const segment of sorted) {
+    if (segment.end <= cursor) continue;
+    if (segment.start >= window.end) break;
+    if (segment.start > cursor) segments.push({ start: cursor, end: segment.start });
+    cursor = Math.max(cursor, segment.end);
+  }
+  if (cursor < window.end) segments.push({ start: cursor, end: window.end });
+  return segments;
 }
 
 /**
@@ -161,39 +201,112 @@ function localNow(now) {
 }
 
 /**
+ * 把一份配置算成「今天一共有多少可排时间」的那几个数（纯函数，不看时钟）。
+ *
+ * 口径（ADR-0011 修订）：
+ * - 窗口时长 = 窗口扣掉不可占段之后的**可支配**时长；
+ * - 日清成本分两拨：落在可用窗口内的从可排时间里扣，落在窗口外的不占可排时间
+ *   （但仍然算进「今日日清」的总数）；
+ * - 插入损耗按**全天全额**预留（保守口径）；
+ * - 可排时间不为负——不够就是 0，不报负数。
+ * @param {object} config - 容量配置。
+ * @returns {object} 归一化后的输入与算出来的数。
+ */
+function analyze(config) {
+  // 显式传 null 也当「没给配置」：退回通用默认值，不给出一个全 0 的假容量。
+  const input = readConfig(config === null || config === undefined ? DEFAULT_CAPACITY_CONFIG : config);
+
+  const windows = input.windows.map((window) => {
+    // 不可占的段从窗口里扣掉：午休不是可支配时间。
+    const segments = availableSegmentsOf(window, input.blocked);
+    const minutes = segments.reduce((sum, segment) => sum + (segment.end - segment.start), 0);
+    return { ...window, segments, minutes };
+  });
+
+  const windowMinutes = windows.reduce((sum, window) => sum + window.minutes, 0);
+  // 日清分两拨（ADR-0011 修订）：
+  // - 落在**可用窗口内**的：从可排时间里扣——它要占掉窗口里的时间。
+  // - 落在**窗口外**的：不占可排时间（那个时刻本来就不装活），但仍然是今天的固定成本，
+  //   仍然进顶部「今日日清未还几笔」的统计。
+  const daily = input.daily.map((item) => ({
+    ...item,
+    inWindow: isAtAvailableInWindow(item.at, input.windows, input.blocked),
+  }));
+  const dailyMinutes = daily.reduce((sum, item) => sum + item.minutes, 0);
+  const dailyMinutesInWindow = daily.reduce(
+    (sum, item) => sum + (item.inWindow ? item.minutes : 0),
+    0,
+  );
+  const dailyMinutesOutsideWindow = dailyMinutes - dailyMinutesInWindow;
+  const schedulableMinutes = Math.max(
+    0,
+    windowMinutes - dailyMinutesInWindow - input.interruption,
+  );
+
+  return {
+    input,
+    windows,
+    daily,
+    windowMinutes,
+    dailyMinutes,
+    dailyMinutesInWindow,
+    dailyMinutesOutsideWindow,
+    interruptionMinutes: input.interruption,
+    schedulableMinutes,
+  };
+}
+
+/**
+ * 今天的**可排时间**（纯函数，不看时钟）。
+ *
+ * 口径见 {@link analyze}：窗口时长 − 落在可用窗口内的日清成本 − 插入损耗。
+ * 这是容量口径里唯一的那一处推导，抽成独立函数是为了能单独喂一份配置断言它。
+ * @param {object} [config] - 容量配置；不给就用通用默认值。
+ * @returns {object} 窗口时长、日清成本（总数／窗口内／窗口外）、插入损耗与可排时间。
+ */
+export function schedulableMinutesOf(config = DEFAULT_CAPACITY_CONFIG) {
+  const { windowMinutes, dailyMinutes, dailyMinutesInWindow, dailyMinutesOutsideWindow, interruptionMinutes, schedulableMinutes } =
+    analyze(config);
+  return {
+    windowMinutes,
+    dailyMinutes,
+    dailyMinutesInWindow,
+    dailyMinutesOutsideWindow,
+    interruptionMinutes,
+    schedulableMinutes,
+  };
+}
+
+/**
  * 算今天的容量。
  *
- * 可排时间 = 窗口时长 − 日清成本 − 插入损耗；剩余可排时间 = 从现在起还剩的窗口时长
- * − 还没到时段的日清成本 − 插入损耗。两者都**实时算**，不落配置（ADR-0011）。
+ * 可排时间 = 窗口时长 − **落在可用窗口内的**日清成本 − 插入损耗；
+ * 剩余可排时间 = 从现在起还剩的可支配窗口时长 − 还没到时段的（窗口内的）日清成本 − 插入损耗。
+ * 两者都**实时算**，不落配置（ADR-0011）。
  * @param {object | Date} now - 参照时刻（本地时钟：`{ date, time }`）。
  * @param {object} [config] - 容量配置；不给就用通用默认值。
  * @returns {object} 今天的容量。
  */
 export function capacityFor(now, config = DEFAULT_CAPACITY_CONFIG) {
-  // 显式传 null 也当「没给配置」：退回通用默认值，不给出一个全 0 的假容量。
-  const input = readConfig(config === null || config === undefined ? DEFAULT_CAPACITY_CONFIG : config);
+  const { input, windows, daily, windowMinutes, dailyMinutes, dailyMinutesInWindow, dailyMinutesOutsideWindow, interruptionMinutes, schedulableMinutes } =
+    analyze(config);
   const clock = localNow(now);
 
-  const windows = input.windows.map((window) => {
-    // 不可占的段从窗口里扣掉：午休不是可支配时间。
-    let blocked = 0;
-    for (const segment of input.blocked) {
-      blocked += overlapMinutes(window.start, window.end, segment.start, segment.end);
-    }
-    return { ...window, minutes: window.end - window.start - blocked };
-  });
-
-  const windowMinutes = windows.reduce((sum, window) => sum + window.minutes, 0);
-  const dailyMinutes = input.daily.reduce((sum, item) => sum + item.minutes, 0);
-  const schedulableMinutes = Math.max(0, windowMinutes - dailyMinutes - input.interruption);
-
-  const remainingWindowMinutes = windows.reduce((sum, window) => {
-    if (clock.minutes <= window.start) return sum + window.minutes;
-    if (clock.minutes < window.end) return sum + (window.end - clock.minutes);
-    return sum;
-  }, 0);
+  // 剩余窗口时长：只算**可支配片段**——不可占的那段不装活，不进剩余。
+  const remainingWindowMinutes = windows.reduce(
+    (sum, window) =>
+      sum +
+      window.segments.reduce(
+        (inner, segment) =>
+          inner + Math.max(0, segment.end - Math.max(segment.start, clock.minutes)),
+        0,
+      ),
+    0,
+  );
   // 日清成本按「时段」计：时段已经过去的算已经花掉了，还没到的才算今天的剩余负担。
-  const remainingDailyMinutes = input.daily.reduce((sum, item) => {
+  // 只算落在可用窗口里的那些——窗口外的那笔不占剩余。
+  const remainingDailyMinutes = daily.reduce((sum, item) => {
+    if (!item.inWindow) return sum;
     if (item.at === null || item.at > clock.minutes) return sum + item.minutes;
     return sum;
   }, 0);
@@ -224,10 +337,19 @@ export function capacityFor(now, config = DEFAULT_CAPACITY_CONFIG) {
             end: current.endText,
             kind: current.kind,
             minutes: current.minutes,
-            remainingMinutes: current.end - clock.minutes,
+            // 这个窗口里还剩多少**可支配**时间（不可占的那段不算）。
+            remainingMinutes: current.segments.reduce(
+              (sum, segment) =>
+                sum + Math.max(0, segment.end - Math.max(segment.start, clock.minutes)),
+              0,
+            ),
           },
     windowMinutes,
+    // 全部日清成本（顶部统计口径：不管时段在不在窗口内都算）。
     dailyMinutes,
+    // 其中落在可用窗口内的（从可排时间里扣的）与落在窗口外的（不占可排时间的）。
+    dailyMinutesInWindow,
+    dailyMinutesOutsideWindow,
     interruptionMinutes: input.interruption,
     schedulableMinutes,
     remainingMinutes,
@@ -249,16 +371,17 @@ export function capacityFor(now, config = DEFAULT_CAPACITY_CONFIG) {
  * - `estimatedDuration` 作备选，**单位按分钟处理——这是假设**，见 app/README.md。
  * @param {object} note - 便贴（带 estimatePomo / estimateDuration）。
  * @param {object} [options] - 选项。
- * @param {number} [options.pomodoroMinutes] - 一个番茄多少分钟，默认 25。
+ * @param {number} [options.pomodoroMinutes] - 一个番茄多少分钟，默认取通用默认值（25）。
  * @returns {{ minutes: number | null, source: string | null }} 分钟数与来源；未估算时 minutes 为 null。
  */
-export function estimateOf(note, { pomodoroMinutes = 25 } = {}) {
+export function estimateOf(note, { pomodoroMinutes = DEFAULT_CAPACITY_CONFIG.番茄分钟 } = {}) {
   if (note === null || typeof note !== 'object') return { minutes: null, source: null };
   const pomo = note.estimatePomo;
   if (typeof pomo === 'number' && Number.isFinite(pomo) && pomo > 0) {
-    const minutes = typeof pomodoroMinutes === 'number' && Number.isFinite(pomodoroMinutes)
-      ? pomodoroMinutes
-      : 25;
+    const minutes =
+      typeof pomodoroMinutes === 'number' && Number.isFinite(pomodoroMinutes)
+        ? pomodoroMinutes
+        : DEFAULT_CAPACITY_CONFIG.番茄分钟;
     return { minutes: pomo * minutes, source: 'estimatedPomo' };
   }
   const duration = note.estimateDuration;
@@ -269,13 +392,27 @@ export function estimateOf(note, { pomodoroMinutes = 25 } = {}) {
 }
 
 /**
+ * 一条动作的预计耗时（分钟）与来源，番茄分钟取自**容量配置**。
+ *
+ * 番茄分钟是容量参数的一部分（ADR-0011）：配置里写多少就按多少折算；
+ * 配置里没有、或者写坏了，就用通用默认值。
+ * @param {object} note - 便贴（带 estimatePomo / estimateDuration）。
+ * @param {object} [config] - 容量配置；不给就用通用默认值。
+ * @returns {{ minutes: number | null, source: string | null }} 分钟数与来源；未估算时 minutes 为 null。
+ */
+export function estimateWithConfig(note, config = DEFAULT_CAPACITY_CONFIG) {
+  const input = readConfig(config === null || config === undefined ? DEFAULT_CAPACITY_CONFIG : config);
+  return estimateOf(note, { pomodoroMinutes: input.pomodoroMinutes });
+}
+
+/**
  * 一条动作的预计耗时（分钟）。
  *
  * 口径见 {@link estimateOf}：番茄数 × 番茄分钟；番茄数缺失或为 0 = **未估算**（不是 0 分钟）；
  * `estimatedDuration` 作备选，单位按分钟处理（这是假设）。
  * @param {object} note - 便贴（带 estimatePomo / estimateDuration）。
  * @param {object} [options] - 选项。
- * @param {number} [options.pomodoroMinutes] - 一个番茄多少分钟，默认 25。
+ * @param {number} [options.pomodoroMinutes] - 一个番茄多少分钟，默认取通用默认值（25）。
  * @returns {number | null} 预计分钟数；未估算时为 null。
  */
 export function estimateMinutes(note, options = {}) {
@@ -284,7 +421,7 @@ export function estimateMinutes(note, options = {}) {
 
 /**
  * 这件东西今天装不装得下。
- * @param {object} capacity - 今天���容量。
+ * @param {object} capacity - 今天的容量。
  * @param {number} minutes - 预计耗时（分钟）。
  * @returns {boolean} 装得下就是 true。
  */
