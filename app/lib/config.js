@@ -8,6 +8,8 @@
  * - `记录目录`：记录页（markdown issue 页）所在目录。相对路径按**仓库根**解，
  *   绝对路径原样用。
  * - `容量`：整份容量参数（ADR-0011）。形状见 `app/capacity.schema.json`。
+ * - `清单`：滴答清单 id，按纸箱 key 分（`inbox`／`project`／`execution`／`waiting`／
+ *   `calendar`／`maybe`）→ 清单 id（字符串）。形状见 {@link readContainers}。
  *
  * 读不到、不是合法 JSON、不是对象——都当没有这份配置，走默认值，不抛。
  * 本地配置是可选的，缺它不该让工作台起不来。
@@ -20,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_CAPACITY_CONFIG, WINDOW_KINDS } from './capacity.js';
+import { CONTAINERS } from './containers.js';
 
 /** 仓库根：本文件在 `<repo>/app/lib/config.js`，往上两级。 */
 export const REPO_ROOT = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
@@ -29,6 +32,9 @@ export const LOCAL_CONFIG_FILE = 'local-config.json';
 
 /** 本机配置里放容量参数的字段名。 */
 export const CAPACITY_FIELD = '容量';
+
+/** 本机配置里放滴答清单 id 的字段名。 */
+export const CONTAINERS_FIELD = '清单';
 
 /** 容量配置的顶层字段全集（与 `app/capacity.schema.json` 一致）。 */
 const CAPACITY_KEYS = ['定于', '窗口', '不可占', '日清', '插入损耗分钟', '深度', '番茄分钟'];
@@ -251,4 +257,42 @@ export function readCapacityConfig({ root = REPO_ROOT } = {}) {
     return copyCapacityConfig(DEFAULT_CAPACITY_CONFIG);
   }
   return copyCapacityConfig(candidate);
+}
+
+/**
+ * 读本机的滴答清单 id，覆盖到六个纸箱上。
+ *
+ * 读的是仓库根的 `local-config.json` 里的「清单」字段——形状是
+ * `{ "<纸箱 key>": "<清单 id>" }`，key 取 `lib/containers.js` 里的 `key`
+ * （`inbox`／`project`／`execution`／`waiting`／`calendar`／`maybe`）：
+ *
+ * ```jsonc
+ * { "清单": { "inbox": "inbox…", "execution": "<24 位 id>", … } }
+ * ```
+ *
+ * 仓库里 `lib/containers.js` 的 id 是**虚构占位**（真实清单 id 是个人信息，不进公开仓库），
+ * 所以真机上必须靠这一份本机配置覆盖。
+ *
+ * 降级口径与容量配置**同一套**：任何一步不顺利（文件读不到、不是合法 JSON、
+ * 没有这个字段、字段不是对象、某个值不是非空字符串）都**不抛**——
+ * **那一个纸箱**退回仓库里的虚构占位，其余纸箱照常用配置里的值。
+ * 「半个纸箱」不算配置坏了：清单 id 是逐个纸箱独立的。
+ *
+ * 每次调用都重新读盘（不缓存）：手改配置 → 刷新页面 → 立刻生效。
+ * @param {object} [options] - 选项。
+ * @param {string} [options.root] - 仓库根（默认本仓库根）。
+ * @returns {object[]} 六个纸箱（副本；改它不会动到仓库里的那一份）。
+ */
+export function readContainers({ root = REPO_ROOT } = {}) {
+  const local = readLocalConfig({ root });
+  const ids = local[CONTAINERS_FIELD];
+  const table = isPlainObject(ids) ? ids : {};
+  return CONTAINERS.map((container) => {
+    const value = table[container.key];
+    if (typeof value !== 'string') return { ...container };
+    const trimmed = value.trim();
+    // 值不是非空字符串：这个纸箱退回仓库里的虚构占位，不抛。
+    if (trimmed.length === 0) return { ...container };
+    return { ...container, projectId: trimmed };
+  });
 }

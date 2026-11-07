@@ -16,19 +16,19 @@ const CONTAINERS = [
 ];
 
 test('动作校验：动作类型、目标 id、参数都合法时给出规范化的动作', () => {
-  const parsed = validateAction({ 动作: 'complete', 目标id: '  abc123  ', 参数: { 备注: '随手写的' } });
+  const parsed = validateAction({ action: 'complete', taskId: '  abc123  ', params: { 备注: '随手写的' } });
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.value, { action: 'complete', taskId: 'abc123', params: { 备注: '随手写的' } });
 });
 
 test('动作校验：没给参数时按空对象算，不算非法', () => {
-  const parsed = validateAction({ 动作: 'complete', 目标id: 'abc123' });
+  const parsed = validateAction({ action: 'complete', taskId: 'abc123' });
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.value.params, {});
 });
 
 test('动作校验：缺动作类型 → invalid-argument', () => {
-  for (const body of [{}, { 目标id: 'abc123' }, { 动作: '', 目标id: 'abc123' }, { 动作: 42, 目标id: 'abc123' }]) {
+  for (const body of [{}, { taskId: 'abc123' }, { action: '', taskId: 'abc123' }, { action: 42, taskId: 'abc123' }]) {
     const parsed = validateAction(body);
     assert.equal(parsed.ok, false, `这份请求体不该通过：${JSON.stringify(body)}`);
     assert.equal(parsed.code, 'invalid-argument');
@@ -36,7 +36,7 @@ test('动作校验：缺动作类型 → invalid-argument', () => {
 });
 
 test('动作校验：不支持的动作 → invalid-argument', () => {
-  const parsed = validateAction({ 动作: 'reschedule', 目标id: 'abc123' });
+  const parsed = validateAction({ action: 'reschedule', taskId: 'abc123' });
   assert.equal(parsed.ok, false);
   assert.equal(parsed.code, 'invalid-argument');
   assert.match(parsed.message, /不支持的动作/);
@@ -44,7 +44,7 @@ test('动作校验：不支持的动作 → invalid-argument', () => {
 
 test('动作校验：目标 id 不是非空字符串 → invalid-argument', () => {
   for (const target of [123, '', '   ', null, undefined, {}]) {
-    const parsed = validateAction({ 动作: 'complete', 目标id: target });
+    const parsed = validateAction({ action: 'complete', taskId: target });
     assert.equal(parsed.ok, false, `目标 id ${JSON.stringify(target)} 不该通过`);
     assert.equal(parsed.code, 'invalid-argument');
   }
@@ -52,10 +52,18 @@ test('动作校验：目标 id 不是非空字符串 → invalid-argument', () =
 
 test('动作校验：参数不是对象 → invalid-argument', () => {
   for (const params of ['随手写的', 42, [], null]) {
-    const parsed = validateAction({ 动作: 'complete', 目标id: 'abc123', 参数: params });
+    const parsed = validateAction({ action: 'complete', taskId: 'abc123', params });
     assert.equal(parsed.ok, false, `参数 ${JSON.stringify(params)} 不该通过`);
     assert.equal(parsed.code, 'invalid-argument');
   }
+});
+
+test('动作校验：写方向的键是英文——旧的中文键不再被认', () => {
+  // 契约改名（动作 → action、目标id → taskId、参数 → params）：
+  // 中文键不再是请求体的一部分，认它等于认错契约。
+  const parsed = validateAction({ 动作: 'complete', 目标id: 'abc123', 参数: {} });
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.code, 'invalid-argument');
 });
 
 test('动作校验：请求体不是一个 JSON 对象 → invalid-argument', () => {

@@ -85,6 +85,46 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 - `## 卡在…` / `## 卡点…` / `## 阻塞…` → 取第一段作「卡点」。
 - 缺哪一段就是 `null`——**不编**。
 
+## 滴答清单 id 怎么配
+
+仓库里 `lib/containers.js` 的六个纸箱带的清单 id 是**虚构占位**（真实 id 属于个人信息，不进公开仓库）。
+真机上由本机配置覆盖：`local-config.json` 的 **「清单」** 字段，
+形状是 `{ "<纸箱 key>": "<清单 id>" }`，key 取 `lib/containers.js` 里的 `key`
+（`inbox`／`project`／`execution`／`waiting`／`calendar`／`maybe`）：
+
+```json
+{
+  "记录目录": "D:/local/my-notes/issues",
+  "清单": {
+    "inbox": "inbox…",
+    "project": "<24 位 id>",
+    "execution": "<24 位 id>",
+    "waiting": "<24 位 id>",
+    "calendar": "<24 位 id>",
+    "maybe": "<24 位 id>"
+  },
+  "容量": { }
+}
+```
+
+读取是 `readContainers({ root })`（`lib/config.js`），**每次调用都重新读盘，不缓存**：
+改完配置 → 刷新页面 → 立刻生效。
+
+降级口径与容量配置同一套（**不抛**）：
+
+| 情况 | 退回到 |
+|---|---|
+| 文件读不到 / 不是合法 JSON / 没有「清单」字段 / 「清单」不是对象 | 六个纸箱**全部**保持仓库里的虚构占位 |
+| 某一个值不是非空字符串（数字、空串、空白串、对象） | **那一个纸箱**保持占位，其余纸箱照常用配置里的值 |
+
+清单 id 是**逐个纸箱独立**的，所以不做「整份配置要么全对要么全错」——
+一个纸箱写坏了，不该让另外五个纸箱也用不上真 id。
+
+**怎么接进路由**：`createTasksHandler` / `createActionsHandler` 的 `containers` 依赖
+既可以是数组，也可以是**返回数组的函数**（`app/index.js` 传 `() => readContainers()`）。
+函数在**每次请求**里现取——改完配置刷新就生效；**一次请求内只解析一次**：
+取数、已沉底区与快照用的是**同一份**纸箱（写方向的「找目标」与「写完重新取数」也是同一份）。
+
 ## 形状
 
 | 文件 | 作用 |
@@ -92,9 +132,9 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `index.js` | Host 半边：`ctx.effect` 里用 `ctx.webServer.register` 开一条本机路由，挂上三个依赖 |
 | `client.js` | Client 半边：左栏图标 + 主区面板（**外壳**与**视图**两层，`React.createElement`，不引构建步骤） |
 | `lib/containers.js` | 六个纸箱与滴答清单 id（用完整 24 位 id） |
-| `lib/config.js` | 本地私有配置 `local-config.json` 的只读读取 |
+| `lib/config.js` | 本地私有配置 `local-config.json` 的只读读取（记录目录 / 容量参数 / 滴答清单 id） |
 | `lib/dida.js` | 用真实入口 + 真 node 调滴答；允许集合＝两条读命令 + 一个写命令（`task complete`）；每条命令带超时 |
-| `lib/route.js` | 读路由处理函数：访问守卫 + 取数编排 + 快照／失败原因（写路由复用它的取数与失败映射） |
+| `lib/route.js` | 读路由处理函数：访问守卫 + 取数编排 + 快照／失败原因（写路由复用它的取数与失败映射）；纸箱与容量参数**按请求解析一次** |
 | `lib/actions.js` | 写动作的校验与定位（纯函数）：动作类型、目标 id、参数；目标动作属于哪个清单 |
 | `lib/write-route.js` | 写路由处理函数：执行写动作 → 重新取数 → 回一份新快照 |
 | `lib/snapshot.js` | 滴答原始任务 → 工作台快照（两个进程之间唯一的契约） |
@@ -173,25 +213,29 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 
 写入走**同一条 HTTP 契约的写方向**：读是 `GET /gtd-workbench/tasks`，写是 `POST /gtd-workbench/actions`。
 
+**键名是英文**：请求体与响应体的键与读方向的快照契约同一套写法——
+一条契约两种写法（中文键 / 英文键）是 bug 的温床。
+
 **请求体**：
 
 ```json
-{ "动作": "complete", "目标id": "<动作 id>", "参数": {} }
+{ "action": "complete", "taskId": "<动作 id>", "params": {} }
 ```
 
-- `动作`：动作类型。**现在只认 `complete`**（完成）。「改期」是 issue #10，届时**同一个路由**加一个动作类型即可。
-- `目标id`：目标动作的 id（非空字符串）。
-- `参数`：动作参数，可省。「完成」用不上；「改期」要带新的截止日。
+- `action`：动作类型。**现在只认 `complete`**（完成）。「改期」是 issue #10，届时**同一个路由**加一个动作类型即可。
+- `taskId`：目标动作的 id（非空字符串）。
+- `params`：动作参数，可省。「完成」用不上；「改期」要带新的截止日。
 
 **响应体**：
 
 | 情形 | 状态码 | 响应体 |
 |---|---|---|
-| 写成功 | 200 | `{ "ok": true, "动作": "complete", "目标id": "…", "快照": { … } }` |
-| 写成功但刷新没成 | 200 | `{ "ok": true, "动作": "…", "目标id": "…", "快照": null, "刷新错误": { "code": "…", "message": "…" } }` |
+| 写成功 | 200 | `{ "ok": true, "action": "complete", "taskId": "…", "snapshot": { … } }` |
+| 写成功但刷新没成 | 200 | `{ "ok": true, "action": "…", "taskId": "…", "snapshot": null, "refreshError": { "code": "…", "message": "…" } }` |
 | 失败 | 见下 | `{ "error": { "code": "…", "message": "人能读的失败原因" } }` |
 
-「快照」是**写成功之后重新取的一份**，形状与 `GET` 的响应体完全一致——客户端换主卡不必再发一次读请求。
+`snapshot` 是**写成功之后重新取的一份**，形状与 `GET` 的响应体完全一致——客户端换主卡不必再发一次读请求。
+`refreshError` 只在「写成功了、但重新取数没成」时出现（这时 `snapshot` 是 `null`）。
 
 **失败类别**（读方向与写方向同一套）：
 
@@ -204,7 +248,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `invalid-argument` | 400 | 参数非法或动作类型不支持（写方向专有） |
 | `internal-error` | 500 | 认不出的错误 |
 
-写失败**不会**表现为已完成：失败响应体里没有 `ok`、也没有 `快照`。
+写失败**不会**表现为已完成：失败响应体里没有 `ok`、也没有 `snapshot`。
 
 **滴答 CLI**：允许集合是显式的——两条读命令（`task filter` / `task completed`）加上**一个**写命令
 `task complete`。其余写命令（新建、删除、改期……）拼不进 argv。argv 全仓库只在
@@ -271,7 +315,7 @@ Client 只画不算。想在客户端复用 Host 侧的纯函数，只能在客�
 | `today.deepQuotaUsed` | boolean | 今天的深度名额是否已用掉 |
 | `capacity.asOf` | 字符串 \| `null` | 容量参数定于哪一天；`null` = 未定（用的是通用默认值） |
 | `capacity.windowMinutes` / `dailyMinutes` / `interruptionMinutes` / `schedulableMinutes` / `remainingMinutes` | number | 可排时间 = 窗口 − **窗口内**日清 − 插入损耗（**算得出来**，不是黑箱） |
-| `capacity.dailyMinutesInWindow` / `capacity.dailyMinutesOutsideWindow` | number | 日清成本里落在可用窗口内的 / 落在窗口外的（票 07 新增，`snapshot.js` 的 `capacity` 块待接线） |
+| `capacity.dailyMinutesInWindow` / `capacity.dailyMinutesOutsideWindow` | number | 日清成本里落在可用窗口内的 / 落在窗口外的（「窗口外那笔不占可排时间」要能过界） |
 | `capacity.deepQuota` / `pomodoroMinutes` | number | 深度名额与番茄分钟（都是参数，不写死） |
 | `capacity.currentWindow` | 对象 \| `null` | 当前所处的时间窗口；落在窗口外时为 `null`（不是错） |
 | 每条便贴 `eligible` | boolean | 有没有资格进焦点 |
@@ -350,6 +394,16 @@ v2 的**焦点**是 `focus` 对象（`focus.card` / `focus.next`）。两者语�
 半坏的配置会算出一个看起来准、其实错的剩余时间（ADR-0011：猜出来的数比没有数更危险）。
 退回之后 `capacity.asOf` 是 `null` = **未初始化**，界面据此显示「参数未定」，
 所以「配置写坏了」是看得见的，不会变成一个看着准的错数。
+
+### 怎么接进路由
+
+`createTasksHandler` / `createActionsHandler` 的 `capacityConfig` 依赖
+既可以是**对象**，也可以是**返回对象的函数**（`app/index.js` 传 `() => readCapacityConfig()`）。
+函数在**每次请求**里现取——改完配置刷新就生效；**一次请求内只解析一次**：
+写方向「找目标」与「写完重新取数」用的是同一份容量口径。
+
+没有给（或者给坏了）就退回通用默认值：快照里 `capacity.asOf` 是 `null`（= 参数未定），
+剩余可排时间按通用默认值算。
 
 ### 口径
 

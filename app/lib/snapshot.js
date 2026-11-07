@@ -355,6 +355,10 @@ export function buildSnapshot({
       // 三个输入的当前值与它们的差，前端与人都能自己算一遍（ADR-0011：只存输入，推导实时算）。
       windowMinutes: capacity.windowMinutes,
       dailyMinutes: capacity.dailyMinutes,
+      // 日清成本分两拨：落在可用窗口内的（从可排时间里扣）与落在窗口外的（不占可排时间）。
+      // 「窗口外那笔不占可排时间」这件事要能过界，前端与人才看得见。
+      dailyMinutesInWindow: capacity.dailyMinutesInWindow,
+      dailyMinutesOutsideWindow: capacity.dailyMinutesOutsideWindow,
       interruptionMinutes: capacity.interruptionMinutes,
       schedulableMinutes: capacity.schedulableMinutes,
       remainingMinutes: capacity.remainingMinutes,

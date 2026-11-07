@@ -78,15 +78,15 @@ test('接缝 A（写）：写动作走一条顶层、带命名空间前缀的本
 
 test('接缝 A（写）：完成成功 → 明确成功，并带一份重新取过数的快照', async () => {
   const { handler, writes } = actionsRouteUnderTest();
-  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { 动作: 'complete', 目标id: TARGET_ID }));
+  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { action: 'complete', taskId: TARGET_ID }));
   assert.equal(result.status, 200);
   assert.equal(result.body.ok, true);
-  assert.equal(result.body['动作'], 'complete');
-  assert.equal(result.body['目标id'], TARGET_ID);
+  assert.equal(result.body.action, 'complete');
+  assert.equal(result.body.taskId, TARGET_ID);
   // 写动作是替身做的：它拿到的是「目标动作所在清单的 id + 动作 id」。
   assert.deepEqual(writes, [{ action: 'complete', projectId: EXECUTION_PROJECT_ID, taskId: TARGET_ID }]);
   // 快照是写完之后重新取的：那条动作已经变成「已完成」。
-  const execution = result.body['快照'].containers.find((container) => container.key === 'execution');
+  const execution = result.body.snapshot.containers.find((container) => container.key === 'execution');
   const note = execution.notes.find((item) => item.id === TARGET_ID);
   assert.ok(note, '快照里没有刚完成的那条动作');
   assert.equal(note.status, 2);
@@ -95,7 +95,7 @@ test('接缝 A（写）：完成成功 → 明确成功，并带一份重新取�
 
 test('接缝 A（写）：动作类型缺失 → invalid-argument，不是 500', async () => {
   const { handler, writes } = actionsRouteUnderTest();
-  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { 目标id: TARGET_ID }));
+  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { taskId: TARGET_ID }));
   assert.equal(result.status, 400);
   assert.equal(result.body.error.code, 'invalid-argument');
   assert.equal(typeof result.body.error.message, 'string');
@@ -106,7 +106,7 @@ test('接缝 A（写）：动作类型缺失 → invalid-argument，不是 500',
 test('接缝 A（写）：动作类型不支持 → invalid-argument，不是 500', async () => {
   const { handler, writes } = actionsRouteUnderTest();
   const result = await withRoute(handler, async (baseUrl) =>
-    post(baseUrl, { 动作: 'reschedule', 目标id: TARGET_ID, 参数: { 截止日: '2026-11-09' } }),
+    post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params: { 截止日: '2026-11-09' } }),
   );
   assert.equal(result.status, 400);
   assert.equal(result.body.error.code, 'invalid-argument');
@@ -115,7 +115,7 @@ test('接缝 A（写）：动作类型不支持 → invalid-argument，不是 50
 
 test('接缝 A（写）：目标 id 不是字符串 → invalid-argument，不是 500', async () => {
   const { handler, writes } = actionsRouteUnderTest();
-  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { 动作: 'complete', 目标id: 123 }));
+  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { action: 'complete', taskId: 123 }));
   assert.equal(result.status, 400);
   assert.equal(result.body.error.code, 'invalid-argument');
   assert.deepEqual(writes, [], '目标 id 非法却写了滴答');
@@ -132,7 +132,7 @@ test('接缝 A（写）：请求体不是合法 JSON → invalid-argument，不�
 test('接缝 A（写）：目标不存在 → not-found，不是 500', async () => {
   const { handler, writes } = actionsRouteUnderTest();
   const result = await withRoute(handler, async (baseUrl) =>
-    post(baseUrl, { 动作: 'complete', 目标id: '根本不存在的那条' }),
+    post(baseUrl, { action: 'complete', taskId: '根本不存在的那条' }),
   );
   assert.equal(result.status, 404);
   assert.equal(result.body.error.code, 'not-found');
@@ -145,13 +145,13 @@ test('接缝 A（写）：滴答执行失败 → cli-failed，与读方向同一
       throw new DidaError('cli-failed', 'DIDA API 错误 500: boom');
     },
   });
-  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { 动作: 'complete', 目标id: TARGET_ID }));
+  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { action: 'complete', taskId: TARGET_ID }));
   assert.equal(result.status, 502);
   assert.equal(result.body.error.code, 'cli-failed');
   assert.notEqual(result.body.error.code, 'not-authenticated');
   // 写失败不能表现为已完成：响应体里没有成功，也没有快照。
   assert.equal(result.body.ok, undefined);
-  assert.equal(result.body['快照'], undefined);
+  assert.equal(result.body.snapshot, undefined);
 });
 
 test('接缝 A（写）：滴答未登录 → not-authenticated，与读方向同一套语义', async () => {
@@ -160,7 +160,7 @@ test('接缝 A（写）：滴答未登录 → not-authenticated，与读方向�
       throw new DidaError('not-authenticated', '未找到 access token。请先运行 `dida auth login` 登录。');
     },
   });
-  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { 动作: 'complete', 目标id: TARGET_ID }));
+  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { action: 'complete', taskId: TARGET_ID }));
   assert.equal(result.status, 401);
   assert.equal(result.body.error.code, 'not-authenticated');
   assert.match(result.body.error.message, /dida auth login/);
@@ -173,7 +173,7 @@ test('接缝 A（写）：取数就失败时也是同一套失败语义', async 
       throw new DidaError('not-authenticated', '未找到 access token。请先运行 `dida auth login` 登录。');
     },
   });
-  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { 动作: 'complete', 目标id: TARGET_ID }));
+  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { action: 'complete', taskId: TARGET_ID }));
   assert.equal(result.status, 401);
   assert.equal(result.body.error.code, 'not-authenticated');
   assert.deepEqual(writes, []);
@@ -187,7 +187,7 @@ test('接缝 A（写）：访问守卫挡住的连接读不到写结果，也没
     const response = await fetch(`${baseUrl}${ACTIONS_ROUTE_PATH}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ 动作: 'complete', 目标id: TARGET_ID }),
+      body: JSON.stringify({ action: 'complete', taskId: TARGET_ID }),
     });
     return { status: response.status, text: await response.text() };
   });
@@ -210,11 +210,11 @@ test('接缝 A（写）：写成功了但刷新没成 → 说清是刷新失败�
       return { ok: true };
     },
   });
-  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { 动作: 'complete', 目标id: TARGET_ID }));
+  const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { action: 'complete', taskId: TARGET_ID }));
   assert.equal(result.status, 200);
   assert.equal(result.body.ok, true, '写成功了却被说成失败');
-  assert.equal(result.body['快照'], null);
-  assert.equal(result.body['刷新错误'].code, 'cli-failed');
+  assert.equal(result.body.snapshot, null);
+  assert.equal(result.body.refreshError.code, 'cli-failed');
   assert.equal(writes.length, 1);
 });
 

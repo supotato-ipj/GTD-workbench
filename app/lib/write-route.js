@@ -4,13 +4,15 @@
  * 写动作走 `POST /gtd-workbench/actions`，请求体是「动作类型 + 目标 id + 参数」：
  *
  * ```json
- * { "动作": "complete", "目标id": "<动作 id>", "参数": {} }
+ * { "action": "complete", "taskId": "<动作 id>", "params": {} }
  * ```
+ *
+ * 键名是**英文**：与读方向的快照契约同一套写法——一条契约两种写法是 bug 的温床。
  *
  * 现在只认**一个**动作类型：`complete`（完成 = 滴答勾选，`status=2`，单口径）。
  * 「改期」是下一票（issue #10）：**同一个路由加一个动作类型**即可，不新开一条路由。
  *
- * 写成功之后**重新取一次数**再回给客户端（响应体里的「快照」），
+ * 写成功之后**重新取一次数**再回给客户端（响应体里的 `snapshot`），
  * 客户端换主卡不必再发一次读请求，画布与滴答也不会差一拍。
  *
  * 写失败**不能表现为已完成**：失败响应体一律是 `{ "error": { "code", "message" } }`，
@@ -20,8 +22,9 @@
 
 import { ActionError, locateInContainer, validateAction } from './actions.js';
 import { CONTAINERS } from './containers.js';
+import { readCapacityConfig } from './config.js';
 import { OPEN_STATUS } from './snapshot.js';
-import { collectSnapshot, describeFailure, sendJson } from './route.js';
+import { collectSnapshot, describeFailure, resolveCapacityConfig, resolveContainers, sendJson } from './route.js';
 
 /** 写路由的路径：顶层路径，带命名空间前缀。 */
 export const ACTIONS_ROUTE_PATH = '/gtd-workbench/actions';
@@ -74,13 +77,18 @@ async function locateTarget({ containers, runDida, taskId }) {
  * 造写路由的处理函数。
  *
  * 依赖全部从外面注入，所以测试能用替身跑同一条路由，不必碰真实滴答。
+ *
+ * `containers` 与 `capacityConfig` **既可以是值，也可以是返回值的函数**：
+ * 函数在**每次请求**里现取（改完本机配置刷新就生效），一次请求内只解析一次——
+ * 「找目标」与「写完重新取数」用的是**同一份**清单 id 与容量口径。
  * @param {object} options - 处理函数的依赖。
  * @param {{ requestRejection: (req: object) => number | undefined }} options.connection - 宿主连接服务（访问守卫）。
  * @param {(args: { projectId: string, status: number }) => Promise<object[]>} options.runDida - 取一个清单下的动作。
  * @param {(args: { action: string, projectId: string, taskId: string, params: object }) => Promise<unknown>} options.runAction - 执行写动作。
  * @param {string} options.timeZone - 截止时间换算到的时区。
  * @param {() => Date} [options.now] - 生成时刻。
- * @param {object[]} [options.containers] - 六个纸箱，默认六个容器（ADR-0007 的固定顺序）。
+ * @param {object[] | (() => object[])} [options.containers] - 六个纸箱，默认六个容器（ADR-0007 的固定顺序）。
+ * @param {object | (() => object)} [options.capacityConfig] - 容量配置，默认每次请求重读本机配置。
  * @param {() => object[]} [options.loadRecords] - 读 markdown 侧记录。
  * @param {(args: { projectIds: string[], startDate: string, endDate: string }) => Promise<object[]>} [options.runCompleted]
  *   按日期区间取已完成条目（已沉底区用）。
@@ -93,6 +101,7 @@ export function createActionsHandler({
   timeZone,
   now = () => new Date(),
   containers = CONTAINERS,
+  capacityConfig = () => readCapacityConfig(),
   loadRecords = () => [],
   runCompleted = async () => [],
 }) {
@@ -116,9 +125,13 @@ export function createActionsHandler({
       if (!parsed.ok) throw new ActionError(parsed.code, parsed.message);
       const { action, taskId, params } = parsed.value;
 
+      // 本次请求解析一次：找目标与写完刷新用的是同一份纸箱与容量口径。
+      const resolvedContainers = resolveContainers(containers);
+      const resolvedCapacity = resolveCapacityConfig(capacityConfig);
+
       // 写动作要带清单 id（`dida task complete <清单 id> <动作 id>`）：
       // 先把目标动作找出来，顺带确认它存在——不存在就说「目标不存在」，不去瞎写。
-      const located = await locateTarget({ containers, runDida, taskId });
+      const located = await locateTarget({ containers: resolvedContainers, runDida, taskId });
       if (located === null) {
         throw new ActionError('not-found', `找不到目标动作：${taskId}`);
       }
@@ -130,20 +143,21 @@ export function createActionsHandler({
       let refreshFailure = null;
       try {
         snapshot = await collectSnapshot({
-          containers,
+          containers: resolvedContainers,
           runDida,
           runCompleted,
           loadRecords,
           timeZone,
           generatedAt: now(),
+          capacityConfig: resolvedCapacity,
         });
       } catch (error) {
         // 写已经成功了，只是刷新没成：说清楚是「刷新失败」，别把它说成「写失败」。
         refreshFailure = describeFailure(error);
       }
-      const payload = { ok: true, 动作: action, 目标id: taskId, 快照: snapshot };
+      const payload = { ok: true, action, taskId, snapshot };
       if (refreshFailure !== null) {
-        payload['刷新错误'] = { code: refreshFailure.code, message: refreshFailure.message };
+        payload.refreshError = { code: refreshFailure.code, message: refreshFailure.message };
       }
       sendJson(res, 200, payload);
     } catch (error) {

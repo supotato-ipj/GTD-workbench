@@ -13,6 +13,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_CAPACITY_CONFIG } from '../lib/capacity.js';
 import { TASKS_ROUTE_PATH, createTasksHandler } from '../lib/route.js';
 import { withRoute } from './helpers/http-harness.js';
 
@@ -34,6 +35,9 @@ async function snapshotOf(tasks) {
     runDida: async (args) => tasks.filter((task) => task.projectId === args.projectId),
     timeZone: TIME_ZONE,
     now: () => new Date(GENERATED_AT),
+    // 显式给「通用默认值」：路由默认会去读本机配置，
+    // 那台机器上有没有 `local-config.json` 不该决定这条断言的结果。
+    capacityConfig: () => DEFAULT_CAPACITY_CONFIG,
   });
   return withRoute(handler, async (baseUrl) => {
     const response = await fetch(`${baseUrl}${TASKS_ROUTE_PATH}`);
