@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "capacity.schema.json",
+  "title": "GTD 工作台容量参数",
+  "description": "本机容量配置的形状（ADR-0011）。这份 schema 进公开仓库；**真实容量数值不进公开仓库**——真实值写在仓库根的 local-config.json 里（被 .gitignore 挡掉），下面的示例值全部是虚构的。字段名是中文，因为这份文件是给会话里的 agent 写的。",
+  "$comment": "写配置的形状就是这些字段：多写一个不认识的字段，整份配置会被判为无效（读取时整体退回通用默认值）。运行时另有「通用默认值」（app/lib/capacity.js 的 DEFAULT_CAPACITY_CONFIG），它用于未初始化状态，「定于」为 null，不受本 schema 管辖。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["定于", "窗口", "不可占", "日清", "插入损耗分钟", "深度", "番茄分钟"],
+  "properties": {
+    "定于": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "参数定于哪一天（YYYY-MM-DD）。本机配置必填：没有它就分不清这是谁的参数，工作台顶部也就说不清「这个数还准吗」。"
+    },
+    "窗口": {
+      "type": "array",
+      "description": "每天真正能装活的那几段工时。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["起", "止"],
+        "properties": {
+          "起": { "$ref": "#/$defs/时刻" },
+          "止": { "$ref": "#/$defs/时刻" },
+          "类": {
+            "enum": ["连续", "可打断"],
+            "description": "窗口的性质：不写按「可打断」算。「连续」的窗口适合派深度活，「可打断」的窗口派事务活（ADR-0011 修订）。"
+          }
+        }
+      }
+    },
+    "不可占": {
+      "type": "array",
+      "description": "从窗口里扣掉的不可支配段（例如午休）。它不占可排时间：落在这一段里的日清项不算「落在可用窗口内」。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["起", "止"],
+        "properties": {
+          "起": { "$ref": "#/$defs/时刻" },
+          "止": { "$ref": "#/$defs/时刻" },
+          "说明": { "type": "string", "description": "这一段为什么不可支配（写给自己看的，不参与计算）。" }
+        }
+      }
+    },
+    "日清": {
+      "type": "array",
+      "description": "当天必须还清的固定成本清单。每一条都进顶部「今日日清未还几笔」的统计；**只有落在可用窗口内的那些才从可排时间里扣**——落在窗口外的（例如傍晚到件的固定成本）不占可排时间（ADR-0011 修订）。",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["名", "时段", "成本分"],
+        "properties": {
+          "名": { "type": "string", "minLength": 1, "description": "这一笔固定成本叫什么（写给自己看的，不参与计算）。" },
+          "时段": {
+            "$ref": "#/$defs/时刻",
+            "description": "它发生在哪一刻。**不必落在任何窗口里**——落在窗口外是允许的（那就不占可排时间）。"
+          },
+          "成本分": { "type": "number", "minimum": 0, "description": "占多少分钟。" }
+        }
+      }
+    },
+    "插入损耗分钟": {
+      "type": "number",
+      "minimum": 0,
+      "description": "外部随时占用、无法事先安排的预留（分钟）。按**全天全额**预留，是保守口径。"
+    },
+    "深度": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["单日上限分钟", "单日配额"],
+      "properties": {
+        "单日上限分钟": { "type": "number", "minimum": 0, "description": "单日深度动作的上限（分钟）。" },
+        "单日配额": { "type": "number", "minimum": 0, "description": "单日深度动作的名额：名额用完后，后续深度动作自动推到下一天。" },
+        "估时系数": {
+          "type": "number",
+          "minimum": 0,
+          "description": "**惰性字段，现在不参与估时。**估时改用滴答的专注估算字段（estimatedPomo × 番茄分钟）。保留它只是不破坏既有配置——别以为它还在起作用。"
+        }
+      }
+    },
+    "番茄分钟": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "一个番茄多少分钟：估时分钟 = 滴答的 estimatedPomo × 番茄分钟。"
+    }
+  },
+  "$defs": {
+    "时刻": {
+      "type": "string",
+      "pattern": "^([01]\\d|2[0-4]):[0-5]\\d$",
+      "description": "本地时刻 HH:mm（24:00 表示午夜）。"
+    }
+  },
+  "examples": [
+    {
+      "定于": "2026-01-01",
+      "窗口": [
+        { "起": "09:00", "止": "12:00", "类": "连续" },
+        { "起": "13:30", "止": "16:00", "类": "可打断" }
+      ],
+      "不可占": [{ "起": "12:00", "止": "13:30", "说明": "示例午休" }],
+      "日清": [
+        { "名": "示例固定成本", "时段": "09:00", "成本分": 15 },
+        { "名": "示例窗口外固定成本", "时段": "18:30", "成本分": 30 }
+      ],
+      "插入损耗分钟": 45,
+      "深度": { "单日上限分钟": 180, "单日配额": 1, "估时系数": 2 },
+      "番茄分钟": 25
+    }
+  ]
+}
