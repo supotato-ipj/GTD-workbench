@@ -55,7 +55,7 @@ async function snapshotOfSixBoxes() {
  */
 async function renderBoard(snapshot) {
   const { module } = createClientModule(clientPath);
-  const html = renderToStaticMarkup(React.createElement(module.components.WorkbenchPanel, { initialSnapshot: snapshot }));
+  const html = renderToStaticMarkup(React.createElement(module.components.WorkbenchPanel, { initialSnapshot: snapshot, initialView: 'canvas' }));
   return new JSDOM(`<!doctype html><html><body>${html}</body></html>`).window.document;
 }
 

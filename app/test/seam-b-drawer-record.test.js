@@ -53,7 +53,7 @@ function snapshotWithRecords() {
  * @returns {Promise<object>} 挂好的环境。
  */
 async function openDrawerFor(snapshot, noteId) {
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   const note = env.document.querySelector(`[data-note-id="${noteId}"]`);
   assert.ok(note, `画布上找不到便贴 ${noteId}`);
   await env.click(note);

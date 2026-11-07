@@ -30,7 +30,7 @@ const LONG_NOTE = snapshot.containers[0].notes[1];
  * @returns {Promise<object>} 挂好的环境。
  */
 async function openDrawer(noteId) {
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   const note = env.document.querySelector(`[data-note-id="${noteId}"]`);
   assert.ok(note, `画布上找不到便贴 ${noteId}`);
   await env.click(note);
@@ -38,7 +38,7 @@ async function openDrawer(noteId) {
 }
 
 test('接缝 B：点开便贴，抽屉显示该便贴的完整正文与原始字段', async () => {
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   const note = env.document.querySelector(`[data-note-id="${SHORT_NOTE.id}"]`);
   assert.ok(note, '画布上找不到那张便贴');
   assert.equal(env.document.querySelector('[data-role="drawer"]'), null, '点开之前抽屉不该在');
@@ -92,7 +92,7 @@ test('接缝 B：正文很长时抽屉可完整滚动读完', async () => {
 });
 
 test('接缝 B：关闭抽屉后画布状态不变', async () => {
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   const board = env.document.querySelector('[data-role="board"]');
   const before = board.innerHTML;
 
@@ -131,7 +131,7 @@ test('接缝 B：抽屉是覆盖层，不改变画布的版式', async () => {
 });
 
 test('接缝 B：抽屉打开时焦点落在关闭按钮上，关掉后回到那张便贴', async () => {
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   await env.click(env.document.querySelector(`[data-note-id="${SHORT_NOTE.id}"]`));
   assert.equal(env.document.activeElement, env.document.querySelector('[data-role="drawer-close"]'));
 

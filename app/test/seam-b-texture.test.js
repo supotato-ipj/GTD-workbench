@@ -96,7 +96,7 @@ function boardSnapshot() {
  */
 function renderPanel(snap) {
   const { module } = createClientModule(clientPath);
-  const html = renderToStaticMarkup(React.createElement(module.components.WorkbenchPanel, { initialSnapshot: snap }));
+  const html = renderToStaticMarkup(React.createElement(module.components.WorkbenchPanel, { initialSnapshot: snap, initialView: 'canvas' }));
   return new JSDOM(`<!doctype html><html><body>${html}</body></html>`).window.document;
 }
 
