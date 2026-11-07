@@ -188,8 +188,8 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 
 | 层 | DOM 角色 | 内容 |
 |---|---|---|
-| ① 顶部常驻 | `focus-top` / `focus-stat`（`data-stat="daily｜remaining｜deep-quota"`） | 今日日清几笔未还、今日剩余可排时间、深度名额；下面一行 `focus-capacity-asof` 写「容量参数定于 <日期>」 |
-| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity` |
+| ① 顶部常驻 | `focus-top` / `focus-stat`（`data-stat="daily｜remaining｜deep-quota"`） | 今日日清几笔未还、今日剩余可排时间、深度名额；下面一行 `focus-capacity-bar` 里是 `focus-capacity-asof`（「容量参数定于 <日期>」，没初始化时 `data-state="unset"`）与 `focus-capacity-outside`（窗口外的那笔日清不占可排时间） |
+| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`（来源标记 `focus-card-requirement-source`，写成「来自记录页」）、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity`；事实行之下是写口 `focus-card-actions` / `focus-card-complete` |
 | ③「接下来」窄条 | `focus-next` / `focus-next-item`（`data-note-ref`） | 只写标题与时限；**点一条即换主卡**（视图内状态，不写任何数据） |
 | ④ 下钻层 | `focus-drill-entry` / `focus-drill` / `focus-back` | 点开后是 v1 的六箱画布原样，带一个「回到焦点」 |
 
@@ -208,6 +208,26 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
   免得 `[data-note-id="…"]` 这种选择器命中错东西。
 - **抽屉里说清「为什么没进焦点」**：便贴 `eligible` 为 false 时，抽屉里出现
   `data-role="drawer-ineligible"`（带 `data-reason`），原因值原样取 Host 给的 `ineligibleReason`。
+- **抽屉里也说清这条动作自己的完成要求**：`data-role="drawer-requirement"`（原文）与
+  `data-role="drawer-requirement-source"`（来源标记，写成「来自记录页」）。
+  它与记录页那一段的「验收标准」**层级不同、可以并存**，但**同一段文字只画一遍**
+  （画了两遍就是噪音）；这条动作没有完成要求时写「未写完成要求」。
+
+## 完成写口（Client 侧）
+
+行动卡上有一个克制的「完成」按钮（`data-role="focus-card-complete"`），在事实行之下、卡脚之上：
+
+| 情形 | DOM | 表现 |
+|---|---|---|
+| 等待 | `focus-card-complete[data-state="pending"]` | 按钮禁用、文案「完成中…」；连点**不重复写**（Host 一次完成要跑十几次 CLI 调用） |
+| 写成功 | — | 响应里的 `snapshot` **整体替换**面板当前的快照 → 主卡自动换成下一件，**不再发一次读请求** |
+| 写成功但刷新失败 | `focus-complete-refresh-failed` + `focus-complete-refresh` | 说「已完成，但刷新失败」并给一次手动刷新。**不能说成写失败**（用户会以为没勾上而重复点） |
+| 写失败 | `focus-complete-error`（带 `data-code`） | 摆出 `error.message`（必要时加 `error.code`）；**不**在本地加「已完成」标记 |
+| 没登录 | `login-prompt` / `login-command` | 走**既有的**未登录那条路，不另起一套 |
+
+- 目标 id 取自卡上的 `data-note-ref`（焦点视图不占用 `data-note-id`）。
+- 请求体：`{ "action": "complete", "taskId": "<动作 id>", "params": {} }`（键是英文）。
+- 完成口径不变：完成 = 滴答勾选，单口径（没有「已核」「撤销完成」「批量勾选」）。
 
 ## 写口：完成（`POST /gtd-workbench/actions`）
 

@@ -25,6 +25,8 @@ window.__ModuleLoader__.load({
     const LOCALE_NAMESPACE = 'gtd-workbench';
     /** 取数路由（Host 半边开的本机路由）。 */
     const TASKS_URL = '/gtd-workbench/tasks';
+    /** 写路由（同一个接缝的写方向：动作类型 + 目标 id + 参数）。 */
+    const ACTIONS_URL = '/gtd-workbench/actions';
 
     /** 中文文案。与 `locale/zh.json` 保持一致（测试会核对两处不漂移）。 */
     const zh = {
@@ -82,27 +84,38 @@ window.__ModuleLoader__.load({
       focusMinutesUnit: '分钟',
       focusQuotaLabel: '深度名额',
       focusCapacityAsOf: '容量参数定于',
-      focusCapacityAsOfUnset: '容量参数未定于某日（用的是通用默认值）',
+      focusCapacityAsOfUnset: '容量参数未定（未初始化，用的是通用默认值）',
+      focusCapacityOutsideWindow: '有 {minutes} 分钟的日清落在可用窗口之外，不占可排时间',
       focusCardWorkLabel: '工作内容',
       focusCardDueLabel: '完成时限',
       focusCardRequirementLabel: '完成要求',
+      /** 来源标记的写法：把来源标记说成「来自记录页」而不是光秃秃的「记录页」。 */
+      focusRequirementFrom: '来自{source}',
       focusCardEstimateLabel: '预计耗时',
       focusEstimateUnset: '未估算',
       focusCardOverdue: '已逾期',
       focusCapacityFits: '装得下',
       focusCapacityNoFit: '装不下',
-      focusCapacityUnknown: '还不知道要多久',
-      focusCapacityNoteFits: '今日剩余 {minutes} 分钟，这件 {estimate} 分钟',
-      focusCapacityNoteNoFits: '今日只剩 {minutes} 分钟，这件要 {estimate} 分钟',
+      focusCapacityUnknown: '装不装得下未知',
+      focusCapacityNoteFits: '还剩 {minutes} 分钟，这件 {estimate} 分钟',
+      focusCapacityNoteNoFits: '还剩 {minutes} 分钟，这件要 {estimate} 分钟',
+      focusCapacityNoteUnknown: '还剩 {minutes} 分钟',
       focusNextHeading: '接下来',
       focusNextHint: '点一条即换主卡',
       focusNextEmpty: '接下来没有别的了',
       focusCardEmpty: '现在没有一件该做的事',
+      /* v2:write 完成写口（issue #9）：完成 = 滴答勾选，单口径。 */
+      focusCompleteLabel: '完成',
+      focusCompletePending: '完成中…',
+      focusCompleteRefreshFailed: '已完成，但刷新失败',
       focusDrillEntry: '打开六箱全景',
       focusDrillTitle: '六箱全景',
       focusBackLabel: '回到焦点',
       focusRemindersHeading: '到期没回',
       drawerIneligibleHeading: '为什么没进焦点',
+      /** 抽屉里这一条动作自己的完成要求（与记录页那一段的项目级验收标准层级不同）。 */
+      drawerRequirementLabel: '完成要求',
+      drawerRequirementUnset: '未写完成要求',
       ruleHeading: '规则角标',
       ruleWaitingMissingWho: '等待清单缺「等谁」',
       ruleWaitingMissingWhat: '等待清单缺「等什么」',
@@ -174,27 +187,35 @@ window.__ModuleLoader__.load({
       focusMinutesUnit: 'min',
       focusQuotaLabel: 'Deep-work slots',
       focusCapacityAsOf: 'Capacity parameters set on',
-      focusCapacityAsOfUnset: 'Capacity parameters are not dated (generic defaults in use)',
+      focusCapacityAsOfUnset: 'Capacity parameters are not set (not initialised, generic defaults in use)',
+      focusCapacityOutsideWindow: '{minutes} min of daily cost falls outside the available windows and does not take schedulable time',
       focusCardWorkLabel: 'What to do',
       focusCardDueLabel: 'Due',
       focusCardRequirementLabel: 'Done means',
+      focusRequirementFrom: 'from {source}',
       focusCardEstimateLabel: 'Estimated time',
       focusEstimateUnset: 'Not estimated',
       focusCardOverdue: 'Overdue',
       focusCapacityFits: 'It fits',
       focusCapacityNoFit: 'It does not fit',
-      focusCapacityUnknown: 'Time unknown',
-      focusCapacityNoteFits: 'Remaining today: {minutes} min, this takes {estimate} min',
-      focusCapacityNoteNoFits: 'Only {minutes} min left today, this needs {estimate} min',
+      focusCapacityUnknown: 'Unknown whether it fits',
+      focusCapacityNoteFits: '{minutes} min left, this takes {estimate} min',
+      focusCapacityNoteNoFits: '{minutes} min left, this needs {estimate} min',
+      focusCapacityNoteUnknown: '{minutes} min left',
       focusNextHeading: 'Next up',
       focusNextHint: 'click one to make it the main card',
       focusNextEmpty: 'Nothing else queued',
       focusCardEmpty: 'Nothing to do right now',
+      focusCompleteLabel: 'Done',
+      focusCompletePending: 'Completing…',
+      focusCompleteRefreshFailed: 'Completed, but refreshing failed',
       focusDrillEntry: 'Open the six-box panorama',
       focusDrillTitle: 'Six-box panorama',
       focusBackLabel: 'Back to focus',
       focusRemindersHeading: 'Overdue replies',
       drawerIneligibleHeading: 'Why it is not in focus',
+      drawerRequirementLabel: 'Done means',
+      drawerRequirementUnset: 'No completion requirement written',
       ruleHeading: 'Rule flags',
       ruleWaitingMissingWho: 'Waiting list is missing who',
       ruleWaitingMissingWhat: 'Waiting list is missing what',
@@ -1624,6 +1645,19 @@ window.__ModuleLoader__.load({
         };
       }, [note.id, onClose]);
       const content = typeof note.content === 'string' ? note.content : '';
+      /* markdown 侧那一页记录：抽屉里既画它的「验收标准」，也要拿它判断要不要重复画完成要求。 */
+      const record = recordOf(props.records, note.record);
+      /* 这一条动作自己的完成要求（单一口径在 Host 侧 `app/lib/requirement.js`）。 */
+      const requirement = note.requirement !== null && typeof note.requirement === 'object' ? note.requirement : {};
+      const requirementText =
+        typeof requirement.text === 'string' && requirement.text.length > 0 ? requirement.text : null;
+      const requirementSource =
+        typeof requirement.source === 'string' && requirement.source.length > 0 ? requirement.source : null;
+      const acceptance =
+        record !== null && typeof record.acceptance === 'string' ? record.acceptance.trim() : '';
+      /* 记录页的「验收标准」与这条动作的完成要求**层级不同、可以并存**；
+         但同一段文字不画两遍。 */
+      const repeated = requirementText !== null && requirementText === acceptance;
       return h(
         'aside',
         {
@@ -1811,8 +1845,59 @@ window.__ModuleLoader__.load({
               )
             : null,
           /* v2:focus end */
+          /* v2:focus 这条动作自己的完成要求：记录页那一段是项目级验收标准，层级不同。 */
+          repeated
+            ? null
+            : h(
+                'section',
+                {
+                  className: 'gtd-drawer__requirement',
+                  'data-role': 'drawer-requirement-section',
+                  style: {
+                    marginTop: '12px',
+                    paddingTop: '10px',
+                    borderTop: '1px solid var(--dsw-alias-border-l2)',
+                  },
+                },
+                h(
+                  'h3',
+                  {
+                    'data-role': 'drawer-requirement-heading',
+                    style: { margin: '0 0 4px', fontSize: '12px', lineHeight: '18px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
+                  },
+                  t('drawerRequirementLabel'),
+                ),
+                h(
+                  'p',
+                  {
+                    'data-role': 'drawer-requirement',
+                    style: {
+                      margin: 0,
+                      fontSize: '12px',
+                      lineHeight: '18px',
+                      whiteSpace: 'pre-wrap',
+                      color:
+                        requirementText === null
+                          ? 'var(--dsw-alias-label-caption)'
+                          : 'var(--dsw-alias-label-secondary)',
+                    },
+                  },
+                  requirementText === null ? t('drawerRequirementUnset') : requirementText,
+                ),
+                requirementSource === null
+                  ? null
+                  : h(
+                      'span',
+                      {
+                        'data-role': 'drawer-requirement-source',
+                        style: { fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                      },
+                      fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
+                    ),
+              ),
+          /* v2:focus end */
           /* gtd:06 markdown 侧与滴答侧分区呈现，不混作一段 */
-          h(DrawerRecord, { record: recordOf(props.records, note.record), t }),
+          h(DrawerRecord, { record, t }),
           /* gtd:06 end */
         ),
       );
@@ -1971,11 +2056,10 @@ window.__ModuleLoader__.load({
       const today = props.today !== null && typeof props.today === 'object' ? props.today : {};
       const capacity = props.capacity !== null && typeof props.capacity === 'object' ? props.capacity : {};
       const daily = Array.isArray(today.daily) ? today.daily : [];
-      // 已还清的是勾掉的那几笔；其余都算还欠着。
-      const cleared = daily.filter(
-        (row) => row !== null && typeof row === 'object' && row.state === '已还清',
+      // 「几笔未还」按 Host 给的 state 数（`未还清` 的那些）——Client 不自己推。
+      const open = daily.filter(
+        (row) => row !== null && typeof row === 'object' && row.state === '未还清',
       ).length;
-      const open = Math.max(0, daily.length - cleared);
       const remaining = minutesOf(today.remainingMinutes);
       const quotaTotal =
         typeof capacity.deepQuota === 'number' && Number.isFinite(capacity.deepQuota)
@@ -2227,9 +2311,10 @@ window.__ModuleLoader__.load({
        * @param {string} key - 行键（也当 data-role 用）。
        * @param {string} label - 标签文案。
        * @param {object} value - 值（React 节点）。
+       * @param {object} [extra] - 值上的额外标记（给测试与眼睛看真值）。
        * @returns {object} React 元素。
        */
-      const fact = (key, label, value) =>
+      const fact = (key, label, value, extra) =>
         h(
           'div',
           {
@@ -2254,6 +2339,7 @@ window.__ModuleLoader__.load({
             'span',
             {
               'data-role': `focus-card-${key}`,
+              ...extra,
               style: { fontSize: '13.5px', lineHeight: '20px', color: 'var(--dsw-alias-label-primary)' },
             },
             value,
@@ -2275,7 +2361,7 @@ window.__ModuleLoader__.load({
                     : t('focusCapacityUnknown');
               const note =
                 estimate === null
-                  ? null
+                  ? fillTemplate(t('focusCapacityNoteUnknown'), { minutes: remaining })
                   : fillTemplate(
                       fits === false ? t('focusCapacityNoteNoFits') : t('focusCapacityNoteFits'),
                       { minutes: remaining, estimate },
@@ -2318,16 +2404,14 @@ window.__ModuleLoader__.load({
                     },
                     state,
                   ),
-                  note === null
-                    ? null
-                    : h(
-                        'span',
-                        {
-                          'data-role': 'focus-card-capacity-note',
-                          style: { fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
-                        },
-                        note,
-                      ),
+                  h(
+                    'span',
+                    {
+                      'data-role': 'focus-card-capacity-note',
+                      style: { fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                    },
+                    note,
+                  ),
                 ),
                 ratio === null
                   ? null
@@ -2359,6 +2443,12 @@ window.__ModuleLoader__.load({
                     ),
               );
             })();
+
+      /* v2:write 完成写口（issue #9）：完成 = 滴答勾选，单口径。
+         写口的状态（等待／失败／写成了但刷新失败）住在外壳里，这里只把它画出来。 */
+      const write = props.write !== null && typeof props.write === 'object' ? props.write : null;
+      const mine = write !== null && write.taskId === card.id ? write : null;
+      const pending = mine !== null && mine.status === 'pending';
 
       return h(
         'article',
@@ -2485,7 +2575,8 @@ window.__ModuleLoader__.load({
                           'data-role': 'focus-card-requirement-source',
                           style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
                         },
-                        requirementSource,
+                        /* 来源标记说成「来自记录页」——光秃秃一个「记录页」看不出是从哪来的。 */
+                        fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
                       ),
                 ),
               ),
@@ -2495,9 +2586,137 @@ window.__ModuleLoader__.load({
             estimate === null
               ? h('span', { 'data-role': 'focus-card-estimate-unset' }, t('focusEstimateUnset'))
               : `${estimate} ${t('focusMinutesUnit')}`,
+            /* 估时取自滴答的哪一个字段：机器可读，不往界面上摆术语。 */
+            { 'data-source': typeof card.estimateSource === 'string' ? card.estimateSource : '' },
           ),
         ),
         capacityBlock,
+        /* v2:write 完成写口：事实行之下、卡脚之上。按钮克制——不加新的说明文字块。 */
+        h(
+          'div',
+          {
+            className: 'gtd-focus-card__writes',
+            'data-role': 'focus-card-actions',
+            style: {
+              marginTop: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              flexWrap: 'wrap',
+            },
+          },
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-role': 'focus-card-complete',
+              'data-state': pending ? 'pending' : 'idle',
+              /* 等待期间按钮不许再点：Host 一次完成要跑十几次 CLI 调用。 */
+              disabled: pending,
+              'aria-busy': pending ? 'true' : 'false',
+              onClick: (event) => {
+                /* 目标 id 从卡上的 `data-note-ref` 取（焦点视图不占用 `data-note-id`）。 */
+                const host =
+                  event.currentTarget !== null && typeof event.currentTarget.closest === 'function'
+                    ? event.currentTarget.closest('[data-role="focus-card"]')
+                    : null;
+                const taskId = host === null ? null : host.getAttribute('data-note-ref');
+                if (typeof taskId !== 'string' || taskId.length === 0) return;
+                if (typeof props.onComplete === 'function') props.onComplete(taskId);
+              },
+              style: {
+                padding: '5px 14px',
+                border: '1px solid var(--dsw-alias-border-l3)',
+                borderRadius: 'var(--dsw-radius-md)',
+                background: 'var(--dsw-alias-bg-module-platform)',
+                color: 'var(--dsw-alias-label-primary)',
+                font: 'inherit',
+                fontSize: '13px',
+                lineHeight: '20px',
+                fontWeight: 600,
+                cursor: pending ? 'progress' : 'pointer',
+                opacity: pending ? 0.7 : 1,
+              },
+            },
+            pending ? t('focusCompletePending') : t('focusCompleteLabel'),
+          ),
+          mine !== null && mine.status === 'failed'
+            ? h(
+                'p',
+                {
+                  'data-role': 'focus-complete-error',
+                  'data-code': typeof mine.code === 'string' ? mine.code : '',
+                  style: {
+                    margin: 0,
+                    fontSize: '12px',
+                    lineHeight: '18px',
+                    color: 'var(--dsw-alias-label-primary)',
+                  },
+                },
+                typeof mine.message === 'string' ? mine.message : '',
+                typeof mine.code === 'string' && mine.code.length > 0
+                  ? h(
+                      'span',
+                      {
+                        'data-role': 'focus-complete-error-code',
+                        style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                      },
+                      `（${mine.code}）`,
+                    )
+                  : null,
+              )
+            : null,
+          mine !== null && mine.status === 'refresh-failed'
+            ? h(
+                'p',
+                {
+                  'data-role': 'focus-complete-refresh-failed',
+                  style: {
+                    margin: 0,
+                    fontSize: '12px',
+                    lineHeight: '18px',
+                    color: 'var(--dsw-alias-label-primary)',
+                  },
+                },
+                /* 写成功了，只是刷新没成——不能说成写失败（用户会以为没勾上而重复点）。 */
+                t('focusCompleteRefreshFailed'),
+                typeof mine.message === 'string' && mine.message.length > 0
+                  ? h(
+                      'span',
+                      {
+                        'data-role': 'focus-complete-refresh-detail',
+                        style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                      },
+                      `：${mine.message}`,
+                    )
+                  : null,
+              )
+            : null,
+          mine !== null && mine.status === 'refresh-failed'
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  'data-role': 'focus-complete-refresh',
+                  onClick: () => {
+                    if (typeof props.onRefresh === 'function') props.onRefresh();
+                  },
+                  style: {
+                    padding: '2px 10px',
+                    border: '1px solid var(--dsw-alias-border-l3)',
+                    borderRadius: 'var(--dsw-radius-md)',
+                    background: 'var(--dsw-alias-bg-module-platform)',
+                    color: 'var(--dsw-alias-label-secondary)',
+                    font: 'inherit',
+                    fontSize: '12px',
+                    lineHeight: '19px',
+                    cursor: 'pointer',
+                  },
+                },
+                t('refresh'),
+              )
+            : null,
+        ),
       );
     }
 
@@ -2797,6 +3016,13 @@ window.__ModuleLoader__.load({
         typeof capacity.asOf === 'string' && capacity.asOf.length > 0
           ? `${t('focusCapacityAsOf')} ${capacity.asOf}`
           : t('focusCapacityAsOfUnset');
+      const asOfSet = typeof capacity.asOf === 'string' && capacity.asOf.length > 0;
+      /* 落在可用窗口之外的日清成本：它不占可排时间，但仍然要还——这件事得让人看见。 */
+      const outsideMinutes = minutesOf(capacity.dailyMinutesOutsideWindow);
+      const outsideText =
+        outsideMinutes > 0
+          ? fillTemplate(t('focusCapacityOutsideWindow'), { minutes: outsideMinutes })
+          : null;
 
       return h(
         'div',
@@ -2819,7 +3045,7 @@ window.__ModuleLoader__.load({
         h(
           'div',
           {
-            'data-role': 'focus-capacity-asof',
+            'data-role': 'focus-capacity-bar',
             style: {
               padding: '10px 16px 8px',
               fontSize: '11px',
@@ -2829,7 +3055,26 @@ window.__ModuleLoader__.load({
               borderBottom: '1px solid var(--dsw-alias-border-l2)',
             },
           },
-          asOfText,
+          h(
+            'div',
+            {
+              'data-role': 'focus-capacity-asof',
+              /* 没初始化这件事要一眼看得出来（`unset` 与 `set` 是两种状态，不是一句话的差别）。 */
+              'data-state': asOfSet ? 'set' : 'unset',
+            },
+            asOfText,
+          ),
+          outsideText === null
+            ? null
+            : h(
+                'div',
+                {
+                  'data-role': 'focus-capacity-outside',
+                  'data-minutes': String(outsideMinutes),
+                  style: { marginTop: '2px' },
+                },
+                outsideText,
+              ),
         ),
         h(FocusReminders, {
           reminders: focus !== null && Array.isArray(focus.reminders) ? focus.reminders : [],
@@ -2880,7 +3125,15 @@ window.__ModuleLoader__.load({
               : h(
                   React.Fragment,
                   null,
-                  h(FocusActionCard, { card, t, onOpenNote: props.onOpenNote }),
+                  h(FocusActionCard, {
+                    card,
+                    t,
+                    onOpenNote: props.onOpenNote,
+                    /* v2:write 完成写口：状态与回调由外壳给（快照也住在外壳里）。 */
+                    write: props.write,
+                    onComplete: props.onComplete,
+                    onRefresh: props.onReload,
+                  }),
                   h(FocusNextQueue, { items: queue, t, onPick: pickFromQueue }),
                 ),
             h(
@@ -2978,6 +3231,8 @@ window.__ModuleLoader__.load({
           writeBaseline(next);
           /* gtd:09 end */
           setState({ status: 'ready', snapshot: body, error: null });
+          /* v2:write 重新取到数了，写口的那句话（失败原因／刷新失败）也就过期了。 */
+          setWrite(null);
         } catch (error) {
           setState({
             status: 'error',
@@ -2993,6 +3248,76 @@ window.__ModuleLoader__.load({
       const [openedNote, setOpenedNote] = React.useState(null);
       const closeDrawer = React.useCallback(() => setOpenedNote(null), []);
       /* gtd:05 end */
+      /* v2:write 完成写口的状态：等待／失败／写成了但刷新失败。
+         住在外壳里——快照也住在外壳里，写口与快照是同一件事的两头。 */
+      const [write, setWrite] = React.useState(null);
+      /** 正在飞的那一次写：连点不许再发一次（Host 一次完成要跑十几次 CLI 调用）。 */
+      const writingRef = React.useRef(false);
+
+      /**
+       * 完成一条动作（滴答勾选，单口径）。
+       *
+       * 走工作台自己的 HTTP 契约的写方向：`POST /gtd-workbench/actions`。
+       * 写成功了、响应里带着新快照，就**整体替换**面板当前的快照——
+       * 主卡因此自动换成下一件，不必再发一次读请求。
+       * @param {string} taskId - 目标动作 id。
+       * @returns {Promise<void>} 完成。
+       */
+      const completeTask = React.useCallback(async (taskId) => {
+        if (typeof taskId !== 'string' || taskId.length === 0) return;
+        if (writingRef.current) return;
+        writingRef.current = true;
+        setWrite({ taskId, status: 'pending', message: null, code: null });
+        try {
+          const response = await fetch(ACTIONS_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', accept: 'application/json' },
+            body: JSON.stringify({ action: 'complete', taskId, params: {} }),
+          });
+          const body = await response.json().catch(() => null);
+          if (!response.ok || body === null || typeof body !== 'object' || body.error) {
+            const failure =
+              body !== null && typeof body === 'object' && body.error
+                ? body.error
+                : { code: 'http-error', message: `HTTP ${response.status}` };
+            const described = withFailureCode(failure, response.status);
+            if (described.code === 'not-authenticated') {
+              /* 没登录：走既有的未登录那条路（`login-prompt`／`login-command`），不另起一套。 */
+              setWrite(null);
+              setState({ status: 'error', snapshot: null, error: described });
+              return;
+            }
+            /* 写失败不是完成：说清原因，不在本地加「已完成」标记。 */
+            setWrite({ taskId, status: 'failed', message: described.message, code: described.code });
+            return;
+          }
+          if (body.snapshot !== null && typeof body.snapshot === 'object') {
+            /* 写成功了，响应里带着新快照：整体换掉，主卡自动变成下一件。 */
+            setWrite(null);
+            setState({ status: 'ready', snapshot: body.snapshot, error: null });
+            return;
+          }
+          /* 写成功了，只是刷新没成：说「已完成，但刷新失败」，并给一次手动刷新。 */
+          const refresh =
+            body.refreshError !== null && typeof body.refreshError === 'object' ? body.refreshError : null;
+          setWrite({
+            taskId,
+            status: 'refresh-failed',
+            message: refresh === null ? null : refresh.message,
+            code: refresh === null ? null : refresh.code,
+          });
+        } catch (error) {
+          setWrite({
+            taskId,
+            status: 'failed',
+            message: error instanceof Error ? error.message : String(error),
+            code: 'network-error',
+          });
+        } finally {
+          writingRef.current = false;
+        }
+      }, []);
+      /* v2:write end */
       /* gtd:04 点主攻带上的条目，开的就是那条便贴的抽屉 */
       const openNoteById = React.useCallback(
         (item) => {
@@ -3080,6 +3405,9 @@ window.__ModuleLoader__.load({
             onOpenNote: openNoteById,
             /* 外壳把刷新也递下去：视图要用（写口写完要重画）时自己叫，不用去碰取数 */
             onReload: load,
+            /* v2:write 完成写口：状态与回调都在外壳（快照也在这儿）。 */
+            write,
+            onComplete: completeTask,
           }),
         ),
         /* v2:shell end */        /* gtd:05 抽屉挂在画布**外面**、面板里面：它是覆盖层，不动画布版面 */
