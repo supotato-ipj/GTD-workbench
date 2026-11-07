@@ -234,7 +234,16 @@ test('接缝 A：滴答未登录与别的失败分得开', () => {
 });
 
 test('接缝 A：工作台不写任何仓库文件', () => {
-  const runtimeSources = ['index.js', 'client.js', 'lib/containers.js', 'lib/snapshot.js', 'lib/dida.js', 'lib/route.js']
+  const runtimeSources = [
+    'index.js',
+    'client.js',
+    'lib/containers.js',
+    'lib/snapshot.js',
+    'lib/dida.js',
+    'lib/route.js',
+    'lib/capacity.js',
+    'lib/focus-guide.js',
+  ]
     .map((file) => readFileSync(path.join(appRoot, file), 'utf8'))
     .join('\n');
   for (const forbidden of ['writeFile', 'appendFile', 'createWriteStream', 'mkdir', 'rmSync', 'unlink']) {
