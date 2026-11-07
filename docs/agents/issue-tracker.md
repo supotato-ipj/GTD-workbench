@@ -2,9 +2,9 @@
 
 Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
-## 隐私红线
+## 隐私线
 
-本仓库公开。**禁止**把用户真实待办、真实工作事项或任何可识别的个人信息写进 issue、评论、PR 或附件；需要举例时使用脱敏的虚构数据。详见仓库根目录 `AGENTS.md` 的 GitHub 隐私原则。
+建 issue、写评论或贴附件前，先按仓库根目录 `AGENTS.md` 的 **GitHub 隐私线** 判断这条内容属于哪一类。
 
 ## Conventions
 
