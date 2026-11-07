@@ -1,8 +1,11 @@
 /**
  * 接缝 A（数据边界，Host → 客户端）：本周主攻随快照过界。
  *
- * 断言的是外部可观察行为：响应体里的 `focus` 是从滴答的 `深度` 标签推出来的，
+ * 断言的是外部可观察行为：响应体里的 `mainPush` 是从滴答的 `深度` 标签推出来的，
  * 改标签它就跟变——而手写名单一个字都影响不到它。
+ *
+ * 字段名是 `mainPush` 而不是 `focus`：v2 的焦点是 `focus` 对象（`focus.card` / `focus.next`），
+ * 两个「焦点」语义不同、名字不重叠（ADR-0009、ADR-0010）。
  */
 
 import assert from 'node:assert/strict';
@@ -44,16 +47,16 @@ test('接缝 A：本周主攻由本周内未完成且带深度标签的动作推
   const snapshot = await snapshotOf(rawTasks);
   // 夹具里带 `深度` 的两条都在本周内：⑥ 汇总（今天）、⑨ 案件留痕（明天）。
   assert.deepEqual(
-    snapshot.focus.map((item) => item.title),
+    snapshot.mainPush.map((item) => item.title),
     ['⑥ 汇总：各岗位意见（采纳/不采纳 + 理由）', '⑨ 案件留痕清单（③④⑦ 各 5 行）'],
   );
   assert.deepEqual(
-    snapshot.focus.map((item) => item.segment),
+    snapshot.mainPush.map((item) => item.segment),
     ['today', 'tomorrow'],
   );
   // 每条主攻都能在便贴里找到，不存在「名单里有、板子上没有」。
   const noteIds = new Set(snapshot.containers.flatMap((container) => container.notes.map((note) => note.id)));
-  for (const item of snapshot.focus) assert.ok(noteIds.has(item.id));
+  for (const item of snapshot.mainPush) assert.ok(noteIds.has(item.id));
 });
 
 test('接缝 A：条数与滴答一致——把「深度」改成「事务」后重新拉数，主攻随之少一条', async () => {
@@ -62,15 +65,15 @@ test('接缝 A：条数与滴答一致——把「深度」改成「事务」后
   );
   const before = await snapshotOf(rawTasks);
   const after = await snapshotOf(degraded);
-  assert.equal(before.focus.length, 2);
-  assert.equal(after.focus.length, 1);
-  assert.equal(after.focus[0].id, '7c4e00000000000000000008');
+  assert.equal(before.mainPush.length, 2);
+  assert.equal(after.mainPush.length, 1);
+  assert.equal(after.mainPush[0].id, '7c4e00000000000000000008');
 });
 
 test('接缝 A：只依据滴答的深度标签——把标签全摘掉，主攻就空了', async () => {
   const stripped = rawTasks.map((task) => (Array.isArray(task.tags) ? { ...task, tags: [] } : task));
   const snapshot = await snapshotOf(stripped);
-  assert.deepEqual(snapshot.focus, []);
+  assert.deepEqual(snapshot.mainPush, []);
 });
 
 test('接缝 A：已完成或落在「以后」的深度动作不进主攻', async () => {
@@ -79,13 +82,13 @@ test('接缝 A：已完成或落在「以后」的深度动作不进主攻', asy
   );
   const snapshot = await snapshotOf(later);
   assert.deepEqual(
-    snapshot.focus.map((item) => item.id),
+    snapshot.mainPush.map((item) => item.id),
     ['7c4e0000000000000000000d'],
   );
   const done = rawTasks.map((task) => (task.id === '7c4e0000000000000000000d' ? { ...task, status: 2 } : task));
   const snapshotDone = await snapshotOf(done);
   assert.deepEqual(
-    snapshotDone.focus.map((item) => item.id),
+    snapshotDone.mainPush.map((item) => item.id),
     ['7c4e00000000000000000008'],
   );
 });

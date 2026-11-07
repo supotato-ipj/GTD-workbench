@@ -6,13 +6,22 @@
  * 这一层只做**翻译**，不做判断：完成情况等于滴答勾选（ADR-0006），工作台不写回（ADR-0006）。
  * 唯一的例外是日历箱的口径（ADR-0007「外部约定时刻」），它决定什么算日历条目——
  * 那不是判断完成情况，是判断**这条东西属于哪个箱子**。
+ *
+ * v2 起（ADR-0009）快照多两块：
+ * - `focus`：焦点引导器的主位行动卡与「接下来」队列（推导在 app/lib/focus-guide.js）；
+ * - `today`：今日日清状态与剩余可排时间（容量计算在 app/lib/capacity.js）。
+ *
+ * 注意别把两个「焦点」混成一个：v1 的**本周主攻**数组在本快照里叫 `mainPush`，
+ * v2 的**焦点**是 `focus` 对象（`focus.card` / `focus.next`），两者语义不同、名字不重叠。
  */
 
 import { BOX_RULES, DEFAULT_BOX_RULE, filterContainerNotes, nextStepOf } from './board.js';
+import { capacityFor } from './capacity.js';
 import { focusOf } from './focus.js';
+import { eligibilityOf, focusGuideOf } from './focus-guide.js';
 import { matchRecordNumber } from './markdown.js';
 import { withViolations } from './rules.js';
-import { sunkOf } from './sunk.js';
+import { localStampOf, sunkOf } from './sunk.js';
 import {
   DEFAULT_EXPANDED_SEGMENTS,
   SEGMENTS,
@@ -97,6 +106,11 @@ function isoOf(value) {
 export function noteOf(task, timeZone) {
   const bands = bandsOf(task.tags);
   const due = localDueOf(task.dueDate, timeZone);
+  const start = localDueOf(task.startDate, timeZone);
+  // 预计耗时来自滴答的专注估算字段，**不在顶层**（在 `focusSummaries` 里）。
+  const summaries = task.focusSummaries !== null && typeof task.focusSummaries === 'object'
+    ? task.focusSummaries
+    : {};
   return {
     id: String(task.id ?? ''),
     title: typeof task.title === 'string' ? task.title : '',
@@ -107,6 +121,7 @@ export function noteOf(task, timeZone) {
     dueTime: due === null ? null : due.time,
     dueAllDay: task.isAllDay === true,
     startAt: isoOf(task.startDate),
+    startLocal: start === null ? null : start.text,
     timeBand: bands.length === 1 ? bands[0] : null,
     timeBands: bands,
     priority: typeof task.priority === 'number' ? task.priority : 0,
@@ -117,6 +132,9 @@ export function noteOf(task, timeZone) {
     nextStep: nextStepOf(task.content),
     // 项目不带子任务（ADR-0004）：这里只记事实，判不判由 app/lib/rules.js 决定。
     hasChildren: Array.isArray(task.childIds) ? task.childIds.length > 0 : false,
+    // 专注估算：番茄数与备选时长（单位按分钟处理，这是假设，见 app/README.md）。
+    estimatePomo: typeof summaries.estimatedPomo === 'number' ? summaries.estimatedPomo : null,
+    estimateDuration: typeof summaries.estimatedDuration === 'number' ? summaries.estimatedDuration : null,
   };
 }
 
@@ -165,6 +183,45 @@ export function withRecord(note, records) {
 }
 
 /**
+ * 组装今日日清清单。
+ *
+ * 还开着的日清项来自快照本身；今天已经还清的日清项来自已完成的那一批
+ * （完成情况只认滴答勾选，ADR-0006）。两段合成一份，前端数「几笔未还」用。
+ * @param {object[]} dailyOpen - 还开着的日清项（来自焦点推导）。
+ * @param {object[]} completedTasks - 已完成的原始任务。
+ * @param {string} timeZone - 目标时区。
+ * @param {string} today - 本地时间的今天。
+ * @returns {object[]} 日清清单。
+ */
+function dailyOf({ dailyOpen, completedTasks, timeZone, today }) {
+  const rows = Array.isArray(dailyOpen) ? [...dailyOpen] : [];
+  for (const task of Array.isArray(completedTasks) ? completedTasks : []) {
+    if (task === null || typeof task !== 'object') continue;
+    if (task.status !== 2) continue;
+    if (!bandsOf(task.tags).includes('日清')) continue;
+    const stamp = localStampOf(task.completedTime, timeZone);
+    if (stamp === null || stamp.date !== today) continue;
+    const due = localDueOf(task.dueDate, timeZone);
+    rows.push({
+      id: String(task.id ?? ''),
+      title: typeof task.title === 'string' ? task.title : '',
+      timeBand: '日清',
+      dueLocal: due === null ? null : due.text,
+      dueDate: due === null ? null : due.date,
+      dueTime: due === null ? null : due.time,
+      overdue: false,
+      state: '已还清',
+    });
+  }
+  return rows.sort((left, right) => {
+    const leftDue = left.dueLocal ?? '9999-12-31 23:59';
+    const rightDue = right.dueLocal ?? '9999-12-31 23:59';
+    if (leftDue !== rightDue) return leftDue < rightDue ? -1 : 1;
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+}
+
+/**
  * 组装一份快照。
  * @param {object} options - 组装选项。
  * @param {object[]} options.containers - 参与本次取数的纸箱（各自一组）。
@@ -173,6 +230,8 @@ export function withRecord(note, records) {
  * @param {string} options.generatedAt - 生成时刻（ISO）。
  * @param {string} [options.today] - 本地时间的今天；不给就按生成时刻与时区算。
  * @param {object[]} [options.records] - markdown 侧记录（Host 从仓库读的）。
+ * @param {object[]} [options.completedTasks] - 已完成的原始任务（已沉底区用）。
+ * @param {object} [options.capacityConfig] - 容量配置；不给就用通用默认值（ADR-0011）。
  * @returns {object} 快照。
  */
 export function buildSnapshot({
@@ -183,6 +242,7 @@ export function buildSnapshot({
   today,
   records = [],
   completedTasks = [],
+  capacityConfig,
 }) {
   const todayText = typeof today === 'string' && today.length > 0 ? today : localDateText(new Date(generatedAt), timeZone);
   const recordList = Array.isArray(records) ? records : [];
@@ -208,6 +268,32 @@ export function buildSnapshot({
       notes: filterContainerNotes(container.key, notes, generatedAt),
     };
   });
+
+  // 容量与焦点：都在 Host 侧算好随快照过界，Client 半边只画不算（ADR-0010）。
+  const localNow = localDueOf(generatedAt, timeZone);
+  const capacity = capacityFor(
+    { date: todayText, time: localNow === null ? '00:00' : localNow.time },
+    capacityConfig,
+  );
+  const guideContext = {
+    today: todayText,
+    nowTime: localNow === null ? '00:00' : localNow.time,
+    capacity,
+  };
+  const guide = focusGuideOf(groups, guideContext);
+  const pushed = new Set(guide.pushed);
+  // 资格判断随便贴过界：每条便贴都带 eligible 与 ineligibleReason，
+  // Client 半边只照着显示「为什么它没进焦点」，不重算资格。
+  const tagged = groups.map((group) => ({
+    ...group,
+    notes: group.notes.map((note) => {
+      const { eligible, reason } = eligibilityOf(note, group.key, guideContext);
+      // 深度名额用完的动作被推到明天——它今天没有资格，但原因要说得清。
+      if (pushed.has(note.id)) return { ...note, eligible: false, ineligibleReason: '深度配额已用' };
+      return { ...note, eligible, ineligibleReason: eligible ? null : reason };
+    }),
+  }));
+
   return {
     generatedAt,
     timeZone,
@@ -220,7 +306,38 @@ export function buildSnapshot({
     // markdown 侧的「为什么／验收标准／卡点」整页放一份，便贴上只放编号（见 withRecord）。
     records: recordList,
     // 本周主攻由滴答的 `深度` 标签推导，不读手写名单（ADR-0007，见 app/lib/focus.js）。
-    focus: focusOf(groups),
+    // 字段名是 `mainPush`：v2 的焦点是下面的 `focus`，两个「焦点」语义不同、名字不重叠。
+    mainPush: focusOf(tagged),
+    // v2 焦点引导器（ADR-0009）：至多一条主位行动卡 + 0–4 条「接下来」+ 等待到期没回的提醒位。
+    focus: {
+      card: guide.card,
+      next: guide.next,
+      reminders: guide.reminders,
+    },
+    // 顶部常驻：今日日清状态与剩余可排时间。
+    today: {
+      daily: dailyOf({
+        dailyOpen: guide.daily,
+        completedTasks,
+        timeZone,
+        today: todayText,
+      }),
+      remainingMinutes: capacity.remainingMinutes,
+      deepQuotaUsed: guide.deepQuotaUsed,
+    },
+    // 容量参数来源标记：`asOf` 为 null = 未定于某日（用的是通用默认值，ADR-0011）。
+    capacity: {
+      asOf: capacity.asOf,
+      deepQuota: capacity.deepQuota,
+      pomodoroMinutes: capacity.pomodoroMinutes,
+      // 三个输入的当前值与它们的差，前端与人都能自己算一遍（ADR-0011：只存输入，推导实时算）。
+      windowMinutes: capacity.windowMinutes,
+      dailyMinutes: capacity.dailyMinutes,
+      interruptionMinutes: capacity.interruptionMinutes,
+      schedulableMinutes: capacity.schedulableMinutes,
+      remainingMinutes: capacity.remainingMinutes,
+      currentWindow: capacity.currentWindow,
+    },
     // 已沉底：只摆最近七天已勾选完成的条目，按天堆叠（见 app/lib/sunk.js）。
     sunk: sunkOf({
       tasks: completedTasks,
@@ -228,6 +345,6 @@ export function buildSnapshot({
       timeZone,
       today: todayText,
     }),
-    containers: groups,
+    containers: tagged,
   };
 }
