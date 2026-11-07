@@ -195,7 +195,7 @@ test('接缝 A：滴答执行失败时，原因与未登录可区分，也不是
   assert.equal(result.body.containers, undefined);
 });
 
-test('接缝 A：只读护栏——写命令拼不进滴答 argv', () => {
+test('接缝 A：命令护栏——读命令照旧，除「完成」外的写命令拼不进滴答 argv', () => {
   assert.deepEqual(buildDidaArgs('task filter', { projectId: EXECUTION_PROJECT_ID }), [
     'task',
     'filter',
@@ -203,8 +203,10 @@ test('接缝 A：只读护栏——写命令拼不进滴答 argv', () => {
     EXECUTION_PROJECT_ID,
     '--json',
   ]);
-  assert.throws(() => buildDidaArgs('task create', { projectId: EXECUTION_PROJECT_ID }), /非只读命令/);
-  assert.throws(() => buildDidaArgs('task update', { projectId: EXECUTION_PROJECT_ID }), /非只读命令/);
+  // 写口只开「完成」一个：新建、删除、改期（issue #10 之前）一律被拒绝。
+  assert.throws(() => buildDidaArgs('task create', { projectId: EXECUTION_PROJECT_ID }), /拒绝执行/);
+  assert.throws(() => buildDidaArgs('task delete', { projectId: EXECUTION_PROJECT_ID }), /拒绝执行/);
+  assert.throws(() => buildDidaArgs('task update', { projectId: EXECUTION_PROJECT_ID }), /拒绝执行/);
 });
 
 test('接缝 A：滴答 CLI 在 Node 里以真实入口调用', () => {
@@ -241,6 +243,8 @@ test('接缝 A：工作台不写任何仓库文件', () => {
     'lib/snapshot.js',
     'lib/dida.js',
     'lib/route.js',
+    'lib/actions.js',
+    'lib/write-route.js',
     'lib/capacity.js',
     'lib/focus-guide.js',
   ]
