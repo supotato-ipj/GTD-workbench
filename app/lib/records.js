@@ -35,7 +35,7 @@ export const RECORDS_DIR_ENV = 'GTD_RECORDS_DIR';
 /** 本地配置文件里指向记录页目录的字段名。 */
 export const LOCAL_CONFIG_KEY = '记录目录';
 
-/** 文件名形如 `06-bumen-zhize.md`。 */
+/** 文件名形如 `06-<slug>.md`。 */
 const RECORD_FILE_PATTERN = /^(\d{2})-(.+)\.md$/;
 
 /**
