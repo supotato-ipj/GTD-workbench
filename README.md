@@ -8,8 +8,8 @@
 
 ## 当前状态
 
-搭建初期。仓库现在承载的是 agent 的工作契约与技能配置（`AGENTS.md` + `docs/agents/`），
-以及**任务梳理台插件**的源码（`app/`）。插件能力随后续 issue 逐步长出。
+工作台 v2「从六箱全景改为焦点引导器」的实施中。规格在 GitHub issue #1，子票 #2–#11。
+词表与决策记录已经归位，插件源码已迁入本仓库（`app/`），基线测试全绿。
 
 ## 目录
 
@@ -18,8 +18,10 @@
 | `AGENTS.md` | agent 在本仓库的工作方式约束（含 GitHub 隐私原则） |
 | `app/` | 任务梳理台插件源码（Host 半边 + Client 半边 + 测试） |
 | `records/` | **虚构**的记录页样本：抽屉里那三段「为什么／验收标准／卡点」的来源 |
+| `GLOSSARY.md` | 词表：工作台用语与 GTD 方法论词（本项目只用这一套说法） |
+| `docs/adr/` | 决策记录（ADR）：状态标记与写法见 `docs/agents/domain.md` |
 | `docs/agents/issue-tracker.md` | issue 追踪约定：GitHub Issues + `gh` CLI |
-| `docs/agents/domain.md` | 领域文档消费规则（单上下文） |
+| `docs/agents/domain.md` | 领域文档消费规则（单上下文）+ ADR 约定 |
 
 ## 插件（`app/`）
 
