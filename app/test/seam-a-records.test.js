@@ -122,9 +122,13 @@ test('记录读取：仓库自带的九页样本都能读出来', () => {
   assert.equal(first.source, 'records/01-invoice-buckets.md');
 });
 
-test('记录读取：默认目录就是仓库里的 records/ 样本', () => {
-  assert.equal(resolveRecordsDir(), SAMPLE_DIR);
-  assert.equal(loadRecords().length, 9);
+test('记录读取：没有覆盖时默认目录就是仓库里的 records/ 样本', () => {
+  // 本机可能配了 `local-config.json`（指向自己的真实记录页），所以默认目录的判定
+  // 必须在「没有覆盖」的前提下断言：给一个没有本地配置的根目录与空环境。
+  const bareRoot = path.join(here, 'fixtures', 'no-local-config');
+  assert.equal(resolveRecordsDir({ env: {}, root: bareRoot }), path.join(bareRoot, RECORDS_DIR));
+  // 仓库自带的那九页样本按默认目录读得出来。
+  assert.equal(loadRecords({ dir: SAMPLE_DIR }).length, 9);
 });
 
 test('记录读取：目录不存在时返回空数组，不抛', () => {
