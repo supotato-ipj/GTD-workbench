@@ -1,0 +1,99 @@
+{
+  "generatedAt": "2026-11-05T00:00:00.000Z",
+  "timeZone": "Asia/Shanghai",
+  "containers": [
+    {
+      "key": "execution",
+      "name": "执行",
+      "listName": "执行清单",
+      "projectId": "7c4e00000000000000000002",
+      "notes": [
+        {
+          "id": "7c4e0000000000000000000a",
+          "title": "08:00 自学 20 分钟",
+          "content": "只改开头三段。",
+          "dueAt": "2026-11-04T01:15:00.000Z",
+          "dueLocal": "2026-11-04 09:15",
+          "dueDate": "2026-11-04",
+          "dueTime": "09:15",
+          "dueAllDay": false,
+          "timeBand": null,
+          "timeBands": [],
+          "priority": 0,
+          "priorityLabel": "无",
+          "status": 2,
+          "statusLabel": "已完成",
+          "tags": []
+        },
+        {
+          "id": "6ad5b0aa1e4b0c399cc072706",
+          "title": "追问业务部：归期 + 5 课题反馈",
+          "content": "两条线并行：归期等对方回，5 课题反馈自己写。",
+          "dueAt": "2026-11-04T06:15:00.000Z",
+          "dueLocal": "2026-11-04 14:15",
+          "dueDate": "2026-11-04",
+          "dueTime": "14:15",
+          "dueAllDay": false,
+          "timeBand": "事务",
+          "timeBands": ["事务"],
+          "priority": 3,
+          "priorityLabel": "中",
+          "status": 0,
+          "statusLabel": "未完成",
+          "tags": ["q2-重要,事务"]
+        },
+        {
+          "id": "7c4e0000000000000000000b",
+          "title": "文书传递（11/4 日清）",
+          "content": "1.5h，法律期限，15:00 前必须还清。",
+          "dueAt": "2026-11-04T09:30:00.000Z",
+          "dueLocal": "2026-11-04 17:30",
+          "dueDate": "2026-11-04",
+          "dueTime": "17:30",
+          "dueAllDay": false,
+          "timeBand": "日清",
+          "timeBands": ["日清"],
+          "priority": 5,
+          "priorityLabel": "高",
+          "status": 0,
+          "statusLabel": "未完成",
+          "tags": ["日清"]
+        },
+        {
+          "id": "7c4e0000000000000000000d",
+          "title": "⑥ 汇总：各岗位意见（采纳/不采纳 + 理由）",
+          "content": "10:00 封箱后一次做完（10:00–11:30）。只做采纳/不采纳 + 理由，不动结构。",
+          "dueAt": "2026-11-05T02:00:00.000Z",
+          "dueLocal": "2026-11-05 10:00",
+          "dueDate": "2026-11-05",
+          "dueTime": "10:00",
+          "dueAllDay": false,
+          "timeBand": "深度",
+          "timeBands": ["深度"],
+          "priority": 5,
+          "priorityLabel": "高",
+          "status": 0,
+          "statusLabel": "未完成",
+          "tags": ["深度"]
+        },
+        {
+          "id": "7c4e00000000000000000008",
+          "title": "⑨ 案件留痕清单（③④⑦ 各 5 行）",
+          "content": "只为你自己。交接窗口期最危险的不是活没干完，是经手的案子没有留痕。",
+          "dueAt": "2026-11-06T07:00:00.000Z",
+          "dueLocal": "2026-11-06 15:00",
+          "dueDate": "2026-11-06",
+          "dueTime": "15:00",
+          "dueAllDay": true,
+          "timeBand": "深度",
+          "timeBands": ["深度"],
+          "priority": 1,
+          "priorityLabel": "低",
+          "status": 0,
+          "statusLabel": "未完成",
+          "tags": ["深度"]
+        }
+      ]
+    }
+  ]
+}

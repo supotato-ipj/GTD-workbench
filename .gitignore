@@ -1,0 +1,18 @@
+# 依赖
+node_modules/
+
+# 本地草稿与个人数据（只留本地，不进仓库）
+.scratch/
+local-config.json
+
+# 实施流程用的 worktree（每个工单一个分支一个目录）
+.worktrees/
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+yarn-error.log*
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db

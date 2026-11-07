@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="纸箱">
+  <path d="M8 22 L32 12 L56 22 L32 32 Z" fill="#7ea6f5"/>
+  <path d="M8 22 L32 32 L32 56 L8 44 Z" fill="#3f6fd8"/>
+  <path d="M56 22 L32 32 L32 56 L56 44 Z" fill="#2f57b0"/>
+  <path d="M32 12 L32 2" stroke="#7ea6f5" stroke-width="3" stroke-linecap="round"/>
+</svg>

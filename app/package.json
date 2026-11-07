@@ -1,0 +1,37 @@
+{
+  "name": "@local/gtd-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "任务梳理台：只读的任务全景视图（六个纸箱、动作便贴）",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "lib/*.js",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "scripts": {
+    "test": "node --test --test-isolation=none --test-concurrency=1 \"test/**/*.test.js\""
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-ui-layout"]
+    }
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

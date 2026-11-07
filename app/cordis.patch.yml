@@ -1,0 +1,3 @@
+- insert:
+    - id: gtd-workbench
+      name: '@local/gtd-workbench'
