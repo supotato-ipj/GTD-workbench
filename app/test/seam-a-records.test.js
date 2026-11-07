@@ -11,13 +11,16 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { RECORDS_DIR, REPO_ROOT, loadRecords } from '../lib/records.js';
+import { RECORDS_DIR, REPO_ROOT, loadRecords, resolveRecordsDir } from '../lib/records.js';
 import { TASKS_ROUTE_PATH, createTasksHandler } from '../lib/route.js';
 import { withRoute } from './helpers/http-harness.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.join(here, '..');
 const rawTasks = JSON.parse(readFileSync(path.join(here, 'fixtures/board-tasks.json'), 'utf8'));
+
+/** 仓库自带的样本记录页目录。测试读它，不读本机的真实记录页。 */
+const SAMPLE_DIR = path.join(REPO_ROOT, RECORDS_DIR);
 
 const TIME_ZONE = 'Asia/Shanghai';
 const GENERATED_AT = '2026-11-05T00:00:00.000Z';
@@ -50,7 +53,7 @@ async function readSnapshot(handler) {
 }
 
 test('接缝 A：markdown 记录随快照一起过界，每条带三段与来源', async () => {
-  const { status, body } = await readSnapshot(routeUnderTest({ loadRecords: () => loadRecords() }));
+  const { status, body } = await readSnapshot(routeUnderTest({ loadRecords: () => loadRecords({ dir: SAMPLE_DIR }) }));
   assert.equal(status, 200);
   assert.equal(body.records.length, 9);
   assert.deepEqual(
@@ -60,7 +63,7 @@ test('接缝 A：markdown 记录随快照一起过界，每条带三段与来源
   for (const record of body.records) {
     assert.equal(typeof record.title, 'string');
     assert.notEqual(record.title, '');
-    // 来源是给人看的仓库相对路径，能照着去找。
+    // 来源是给人看的路径：仓库内写仓库相对路径，能照着去找。
     assert.match(record.source, /^records\/\d{2}-.+\.md$/);
     for (const key of ['why', 'acceptance', 'blocker']) {
       assert.ok(record[key] === null || typeof record[key] === 'string', `${record.number} 的 ${key} 不是字符串也不是 null`);
@@ -72,7 +75,7 @@ test('接缝 A：markdown 记录随快照一起过界，每条带三段与来源
 });
 
 test('接缝 A：便贴带上它对应的记录编号，按 ①–⑨ 与关键词回退', async () => {
-  const { body } = await readSnapshot(routeUnderTest({ loadRecords: () => loadRecords() }));
+  const { body } = await readSnapshot(routeUnderTest({ loadRecords: () => loadRecords({ dir: SAMPLE_DIR }) }));
   const notes = body.containers.flatMap((container) => container.notes);
   const byTitle = new Map(notes.map((note) => [note.title, note.record]));
   // 标题里有编号的按编号对。
@@ -105,7 +108,7 @@ test('接缝 A：没接记录读取器时默认空数组，不抛', async () => 
 });
 
 test('记录读取：仓库自带的九页样本都能读出来', () => {
-  const records = loadRecords();
+  const records = loadRecords({ dir: SAMPLE_DIR });
   assert.equal(records.length, 9);
   assert.deepEqual(
     records.map((record) => record.number),
@@ -117,6 +120,11 @@ test('记录读取：仓库自带的九页样本都能读出来', () => {
   assert.notEqual(first.why, null);
   assert.notEqual(first.blocker, null);
   assert.equal(first.source, 'records/01-invoice-buckets.md');
+});
+
+test('记录读取：默认目录就是仓库里的 records/ 样本', () => {
+  assert.equal(resolveRecordsDir(), SAMPLE_DIR);
+  assert.equal(loadRecords().length, 9);
 });
 
 test('记录读取：目录不存在时返回空数组，不抛', () => {

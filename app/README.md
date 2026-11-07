@@ -46,10 +46,27 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 
 **`--status 0` 不能省**：不带状态过滤时，收集箱与日历单次就会撞满 CLI 的 200 条上限（实测）。
 
-## 记录页
+## 记录页目录怎么配
 
-抽屉里那三段（「为什么／验收标准／卡点」）来自**记录页**（markdown 页），
-在仓库根的 `records/` 下——那是**虚构样本**，开箱即用。
+抽屉里那三段（「为什么／验收标准／卡点」）来自**记录页**（markdown 页）。
+记录页在哪儿，由三处决定，优先级从高到低：
+
+| 优先级 | 来源 | 写法 |
+|---|---|---|
+| 1 | 环境变量 `GTD_RECORDS_DIR` | 绝对路径，例如 `D:/path/to/issues` |
+| 2 | 仓库根的 `local-config.json` 的 `记录目录` 字段 | 相对路径按仓库根解，也可写绝对路径 |
+| 3 | 默认 | 仓库根的 `records/`——仓库自带的**虚构样本**，开箱即用 |
+
+`local-config.json` 已被 `.gitignore` 挡掉，**永远不进版本库**：
+
+```json
+{
+  "记录目录": "D:/local/my-notes/issues"
+}
+```
+
+**真实的个人记录页留在本地**：仓库里只有虚构样本，真实那册用上面任一方式指过来。
+目录指错了也不要紧——读不到就返回空数组，画布照常画，抽屉里显示「无对应记录」。
 
 记录页的写法（`parseRecord` 认的段落）：
 
@@ -60,8 +77,6 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 - `## 卡在…` / `## 卡点…` / `## 阻塞…` → 取第一段作「卡点」。
 - 缺哪一段就是 `null`——**不编**。
 
-目录读不到就返回空数组：画布照常画，抽屉里显示「无对应记录」。
-
 ## 形状
 
 | 文件 | 作用 |
@@ -69,6 +84,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `index.js` | Host 半边：`ctx.effect` 里用 `ctx.webServer.register` 开一条本机路由，挂上三个依赖 |
 | `client.js` | Client 半边：左栏图标 + 主区面板（`React.createElement`，不引构建步骤） |
 | `lib/containers.js` | 六个纸箱与滴答清单 id（用完整 24 位 id） |
+| `lib/config.js` | 本地私有配置 `local-config.json` 的只读读取 |
 | `lib/dida.js` | 用 `process.execPath` + 真实入口调滴答；只跑读命令（`task filter` / `task completed`） |
 | `lib/route.js` | 路由处理函数：访问守卫 + 取数编排 + 快照／失败原因 |
 | `lib/snapshot.js` | 滴答原始任务 → 工作台快照（两个进程之间唯一的契约） |
@@ -78,7 +94,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `lib/rules.js` | 规则角标的四项检查 |
 | `lib/sunk.js` | 已沉底区：最近七天按完成日堆叠 + 每箱完成数 |
 | `lib/markdown.js` | 记录页解析（为什么／验收标准／卡点）与 ①–⑨ 匹配 |
-| `lib/records.js` | Host 侧读 `<repo>/records/*.md`（只读） |
+| `lib/records.js` | Host 侧读记录页（目录可配，默认 `<repo>/records/`；只读） |
 | `lib/diff.js` | 状态迁移差异检测（只演真实发生过的变化） |
 
 取数路由：`GET /gtd-workbench/tasks`（顶层路径，带命名空间前缀）。
