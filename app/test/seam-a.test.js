@@ -195,7 +195,7 @@ test('接缝 A：滴答执行失败时，原因与未登录可区分，也不是
   assert.equal(result.body.containers, undefined);
 });
 
-test('接缝 A：命令护栏——读命令照旧，除「完成」外的写命令拼不进滴答 argv', () => {
+test('接缝 A：命令护栏——读命令照旧，除「完成」「改期」外的写命令拼不进滴答 argv', () => {
   assert.deepEqual(buildDidaArgs('task filter', { projectId: EXECUTION_PROJECT_ID }), [
     'task',
     'filter',
@@ -203,10 +203,29 @@ test('接缝 A：命令护栏——读命令照旧，除「完成」外的写命
     EXECUTION_PROJECT_ID,
     '--json',
   ]);
-  // 写口只开「完成」一个：新建、删除、改期（issue #10 之前）一律被拒绝。
+  // 写口开「完成」与「改期」两个：新建、删除、移动一律被拒绝。
   assert.throws(() => buildDidaArgs('task create', { projectId: EXECUTION_PROJECT_ID }), /拒绝执行/);
   assert.throws(() => buildDidaArgs('task delete', { projectId: EXECUTION_PROJECT_ID }), /拒绝执行/);
-  assert.throws(() => buildDidaArgs('task update', { projectId: EXECUTION_PROJECT_ID }), /拒绝执行/);
+  // 「改期」放行了 `task update`，但**只准改截止日**：没给截止日、或者多带别的参数，都被拒。
+  assert.throws(
+    () =>
+      buildDidaArgs('task update', {
+        projectId: EXECUTION_PROJECT_ID,
+        taskId: '7c4e0000000000000000000d',
+      }),
+    /截止日/,
+  );
+  assert.throws(
+    () =>
+      buildDidaArgs('task update', {
+        projectId: EXECUTION_PROJECT_ID,
+        taskId: '7c4e0000000000000000000d',
+        dueDate: '2026-11-09',
+        timeZone: 'Asia/Shanghai',
+        title: '换个标题',
+      }),
+    /只允许改截止日/,
+  );
 });
 
 test('接缝 A：滴答 CLI 在 Node 里以真实入口调用', () => {

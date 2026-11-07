@@ -7,8 +7,9 @@
  * 2. **`dida task search` 恒返回空数组**——取数一律用 `dida task filter --projects <完整 24 位 id>`。
  * 3. **未登录不能画空板**——CLI 会报错，工作台必须把「未登录」和「别的失败」分开说。
  *
- * 这个模块跑**读**命令，外加**一个**写命令：`task complete`（完成，ADR-0006 的修订）。
- * 其余写命令（新建、删除、改期……）一律拼不进 argv——工作台只开「完成」这一个写口。
+ * 这个模块跑**读**命令，外加**两个**写命令：`task complete`（完成，ADR-0006 的修订）与
+ * `task update`（**只用于改期**：只改 `dueDate`，别的字段一个都不动）。
+ * 其余写命令（新建、删除、移动……）一律拼不进 argv——工作台只开「完成」与「改期」这两个写口。
  *
  * 每条命令都有**超时**：CLI 卡住就把路由挂住，客户端只会一直转圈。
  */
@@ -17,6 +18,8 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+import { cliTimestamp, endOfDayInstant } from './dates.js';
 
 /**
  * 滴答 CLI 的真实入口（npm 全局包里的 dist/index.js）。
@@ -40,14 +43,21 @@ export const DEFAULT_DIDA_ENTRY = path.join(
 /**
  * 允许跑的**命令集合**（显式允许，不是「只读白名单」）。
  *
- * 读命令照旧两条；写口只开**一个**：`task complete`（完成）。
- * 「改期」那条命令留给 issue #10，届时往这个集合里加一条即可。
- * 其余写命令（新建、删除、改期……）一律拼不进 argv。
+ * 读命令照旧两条；写口开**两个**：`task complete`（完成）与 `task update`（**只用于改期**）。
+ * 其余写命令（新建、删除、移动……）一律拼不进 argv。
  */
-export const ALLOWED_COMMANDS = new Set(['task filter', 'task completed', 'task complete']);
+export const ALLOWED_COMMANDS = new Set(['task filter', 'task completed', 'task complete', 'task update']);
 
 /** 读命令（只取数，不改滴答）。 */
 export const READ_COMMANDS = new Set(['task filter', 'task completed']);
+
+/**
+ * 「改期」这条命令**只准**用这几个参数拼 argv。
+ *
+ * `task update` 还能改标题、内容、状态、标签……放行了这条命令**不等于**放行了它的其它参数：
+ * 改期就是改期限，别的都不许从这个写口透出去。
+ */
+const UPDATE_ALLOWED_OPTIONS = ['projectId', 'taskId', 'dueDate', 'timeZone'];
 
 /** 默认超时：一分钟之内 CLI 还没回来，就当它卡住了。 */
 export const DEFAULT_DIDA_TIMEOUT_MS = 30000;
@@ -202,24 +212,41 @@ function runNode(node, entry, argv, timeoutMs = didaTimeoutMs()) {
 }
 
 /**
+ * 拒绝看起来像选项的 id。
+ *
+ * argv 是数组、不经 shell，本来就没有注入面；但一个以 `-` 开头的 id 会被 CLI
+ * 当成选项解析（`--title` 之类），那就不是「改这条动作」而是「改别的东西」了。
+ * @param {string} value - id 文本。
+ * @param {string} label - 出错时怎么称呼它。
+ */
+function assertNotOptionLike(value, label) {
+  if (value.startsWith('-')) {
+    throw new DidaError('invalid-argument', `${label} 不能以 - 开头（会被当成选项）`);
+  }
+}
+
+/**
  * 拼一条命令的 argv——**全仓库唯一拼 argv 的地方**。
  *
- * 允许集合是显式的（{@link ALLOWED_COMMANDS}）：读命令照旧，写口只开「完成」。
+ * 允许集合是显式的（{@link ALLOWED_COMMANDS}）：读命令照旧，写口开「完成」与「改期」。
  * 其余写命令拼不进来。
- * @param {string} command - 命令名，例如 `'task filter'`、`'task complete'`。
+ * @param {string} command - 命令名，例如 `'task filter'`、`'task complete'`、`'task update'`。
  * @param {object} [options] - 参数。
  * @param {string | string[]} [options.projectId] - 清单的完整 24 位 id；数组会按逗号拼成一条
  *   （`dida task completed --projects` 接受多个 id，返回混在一起的扁平数组）。
- * @param {string} [options.taskId] - 动作 id（只有 `task complete` 用）。
+ * @param {string} [options.taskId] - 动作 id（`task complete` 与 `task update` 用）。
  * @param {string} [options.startDate] - 起始日期（`task filter` 用 `YYYY-MM-DD`，
  *   `task completed` 用 `YYYY-MM-DDTHH:mm:ssZ`）。
  * @param {string} [options.endDate] - 结束日期，格式同上。
  * @param {number} [options.status] - 状态过滤（-1 已放弃／0 未完成／2 已完成）。
+ * @param {string} [options.dueDate] - 新的截止日（`YYYY-MM-DD`，粒度到天；只有 `task update` 用）。
+ * @param {string} [options.timeZone] - 解释截止日的时区（只有 `task update` 用）。
  * @returns {string[]} argv。
  */
-export function buildDidaArgs(command, { projectId, taskId, startDate, endDate, status } = {}) {
+export function buildDidaArgs(command, options = {}) {
+  const { projectId, taskId, startDate, endDate, status, dueDate, timeZone } = options;
   if (!ALLOWED_COMMANDS.has(command)) {
-    throw new DidaError('cli-failed', `拒绝执行不在允许集合里的命令：${command}（工作台只允许读命令与「完成」这一个写口）`);
+    throw new DidaError('cli-failed', `拒绝执行不在允许集合里的命令：${command}（工作台只允许读命令与「完成」「改期」两个写口）`);
   }
   // 「完成」是位置参数：`dida task complete <清单 id> <动作 id>`。
   if (command === 'task complete') {
@@ -228,7 +255,52 @@ export function buildDidaArgs(command, { projectId, taskId, startDate, endDate, 
     if (list.length === 0 || target.length === 0) {
       throw new DidaError('invalid-argument', '完成动作需要清单 id 与动作 id');
     }
+    assertNotOptionLike(list, '清单 id');
+    assertNotOptionLike(target, '动作 id');
     return ['task', 'complete', list, target];
+  }
+  // 「改期」走 `task update`，但**只准改截止日**：多带一个参数就当场拒绝。
+  if (command === 'task update') {
+    for (const key of Object.keys(options)) {
+      if (!UPDATE_ALLOWED_OPTIONS.includes(key)) {
+        throw new DidaError('invalid-argument', `「改期」只允许改截止日，不接受参数：${key}`);
+      }
+    }
+    const list = typeof projectId === 'string' ? projectId.trim() : '';
+    const target = typeof taskId === 'string' ? taskId.trim() : '';
+    const day = typeof dueDate === 'string' ? dueDate.trim() : '';
+    const zone = typeof timeZone === 'string' ? timeZone.trim() : '';
+    if (list.length === 0) {
+      throw new DidaError('invalid-argument', '改期需要清单 id');
+    }
+    if (target.length === 0) {
+      throw new DidaError('invalid-argument', '改期需要动作 id');
+    }
+    assertNotOptionLike(list, '清单 id');
+    assertNotOptionLike(target, '动作 id');
+    if (day.length === 0) {
+      throw new DidaError('invalid-argument', '改期需要新的截止日（YYYY-MM-DD，粒度到天）');
+    }
+    if (zone.length === 0) {
+      throw new DidaError('invalid-argument', '改期需要时区');
+    }
+    const instant = endOfDayInstant(day, zone);
+    if (instant === null) {
+      throw new DidaError('invalid-argument', `改期的截止日非法：${day}`);
+    }
+    return [
+      'task',
+      'update',
+      target,
+      '--id',
+      target,
+      '--project',
+      list,
+      '--due-date',
+      cliTimestamp(instant),
+      '--time-zone',
+      zone,
+    ];
   }
   const argv = command.split(' ');
   if (projectId !== undefined) {
@@ -301,21 +373,65 @@ export async function runDidaTaskComplete({ projectId, taskId, entry = didaEntry
 }
 
 /**
+ * 改期一条动作（写口）。
+ *
+ * `dida task update <动作 id> --id <动作 id> --project <清单 id> --due-date <时间戳> --time-zone <时区>`：
+ * **只改截止日**（粒度到天），别的字段一个都不动。
+ * @param {object} options - 调用选项。
+ * @param {string} options.projectId - 目标动作所在清单的 id（**完整 id**，收集箱是 `inbox…`）。
+ * @param {string} options.taskId - 目标动作的 id。
+ * @param {string} options.dueDate - 新的截止日（`YYYY-MM-DD`，粒度到天）。
+ * @param {string} options.timeZone - 解释这个日期的时区（IANA 名）。
+ * @param {string} [options.entry] - CLI 入口文件，默认取本机真实入口。
+ * @param {string} [options.node] - 跑 CLI 的 Node 可执行文件，默认按 {@link nodeBinary} 解析。
+ * @param {number} [options.timeoutMs] - 超时毫秒数，默认见 {@link didaTimeoutMs}。
+ * @returns {Promise<{ ok: true }>} 写成功了。
+ */
+export async function runDidaTaskReschedule({
+  projectId,
+  taskId,
+  dueDate,
+  timeZone,
+  entry = didaEntry(),
+  node = nodeBinary(),
+  timeoutMs,
+}) {
+  const argv = buildDidaArgs('task update', { projectId, taskId, dueDate, timeZone });
+  await runCommand({ entry, node, argv, timeoutMs });
+  return { ok: true };
+}
+
+/**
  * 执行一个写动作（写路由的注入点）。
  *
- * 现在只认「完成」一个动作类型；「改期」是 issue #10，届时在这里加一条分支。
+ * 认两个动作类型：「完成」与「改期」。别的（**包括「跳过」**）一律不写。
  * @param {object} options - 调用选项。
- * @param {string} options.action - 动作类型（`'complete'`）。
+ * @param {string} options.action - 动作类型（`'complete'` 或 `'reschedule'`）。
  * @param {string} options.projectId - 目标动作所在清单的 id。
  * @param {string} options.taskId - 目标动作的 id。
+ * @param {object} [options.params] - 动作参数（「改期」要 `params.dueDate`）。
+ * @param {string} [options.timeZone] - 解释截止日的时区（「改期」用）。
  * @param {string} [options.entry] - CLI 入口文件。
  * @param {string} [options.node] - 跑 CLI 的 Node 可执行文件。
  * @param {number} [options.timeoutMs] - 超时毫秒数。
  * @returns {Promise<{ ok: true }>} 写成功了。
  */
-export async function runDidaAction({ action, projectId, taskId, entry = didaEntry(), node = nodeBinary(), timeoutMs }) {
+export async function runDidaAction({
+  action,
+  projectId,
+  taskId,
+  params = {},
+  timeZone,
+  entry = didaEntry(),
+  node = nodeBinary(),
+  timeoutMs,
+}) {
   if (action === 'complete') {
     return runDidaTaskComplete({ projectId, taskId, entry, node, timeoutMs });
+  }
+  if (action === 'reschedule') {
+    const dueDate = params !== null && typeof params === 'object' ? params.dueDate : undefined;
+    return runDidaTaskReschedule({ projectId, taskId, dueDate, timeZone, entry, node, timeoutMs });
   }
   throw new DidaError('invalid-argument', `不支持的写动作：${String(action)}`);
 }

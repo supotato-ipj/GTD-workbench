@@ -1,7 +1,8 @@
 # 任务梳理台（GTD 工作台）· DSH 插件
 
-一个包，Host 半边 + Client 半边。**不写任何本地文件**（ADR-0006）；滴答那边只开**一个**写口：
-**完成**（写 `status=2`，单口径，不建核销台账）。「改期」是下一票（issue #10）。
+一个包，Host 半边 + Client 半边。**不写任何本地文件**（ADR-0006）；滴答那边只开**两个**写口：
+**完成**（写 `status=2`，单口径，不建核销台账）与**改期**（写 `dueDate`，粒度到天）。
+「跳过」不是写口——它是纯视图状态、零写入。
 唯一写到浏览器本地的是「动画差异基准」（localStorage），ADR-0007 明写允许，不落仓库。
 
 ## 装
@@ -51,6 +52,17 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
   task complete 7c4e00000000000000000002 <动作 id>
 ```
+
+改期手动验收（**会真的改掉那条的期限**，同样先拿不要紧的动作试）：
+
+```
+node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
+  task update <动作 id> --id <动作 id> --project 7c4e00000000000000000002 \
+  --due-date 2026-11-09T15:59:59+0000 --time-zone Asia/Shanghai
+```
+
+（`--due-date` 要的是**带时刻的时间戳**，不是 `2026-11-09`；`2026-11-09` 在 `Asia/Shanghai`
+下是当天 `23:59:59`，即 `2026-11-09T15:59:59+0000`。）
 
 **`--status 0` 不能省**：不带状态过滤时，收集箱与日历单次就会撞满 CLI 的 200 条上限（实测）。
 
@@ -133,9 +145,10 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `client.js` | Client 半边：左栏图标 + 主区面板（**外壳**与**视图**两层，`React.createElement`，不引构建步骤） |
 | `lib/containers.js` | 六个纸箱与滴答清单 id（用完整 24 位 id） |
 | `lib/config.js` | 本地私有配置 `local-config.json` 的只读读取（记录目录 / 容量参数 / 滴答清单 id） |
-| `lib/dida.js` | 用真实入口 + 真 node 调滴答；允许集合＝两条读命令 + 一个写命令（`task complete`）；每条命令带超时 |
+| `lib/dida.js` | 用真实入口 + 真 node 调滴答；允许集合＝两条读命令 + 两个写命令（`task complete`、**只用于改期的** `task update`）；每条命令带超时 |
 | `lib/route.js` | 读路由处理函数：访问守卫 + 取数编排 + 快照／失败原因（写路由复用它的取数与失败映射）；纸箱与容量参数**按请求解析一次** |
 | `lib/actions.js` | 写动作的校验与定位（纯函数）：动作类型、目标 id、参数；目标动作属于哪个清单 |
+| `lib/dates.js` | 截止日文本（粒度到天）与时刻的换算（纯函数）：`YYYY-MM-DD` → 那天的 `23:59:59` → 滴答的时间戳 |
 | `lib/write-route.js` | 写路由处理函数：执行写动作 → 重新取数 → 回一份新快照 |
 | `lib/snapshot.js` | 滴答原始任务 → 工作台快照（两个进程之间唯一的契约） |
 | `lib/board.js` | 六箱归位规则：画便贴还是箱签、默不默认折叠、日历箱的「外部约定时刻」口径 |
@@ -229,9 +242,12 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 - 请求体：`{ "action": "complete", "taskId": "<动作 id>", "params": {} }`（键是英文）。
 - 完成口径不变：完成 = 滴答勾选，单口径（没有「已核」「撤销完成」「批量勾选」）。
 
-## 写口：完成（`POST /gtd-workbench/actions`）
+## 写口：完成与改期（`POST /gtd-workbench/actions`）
 
 写入走**同一条 HTTP 契约的写方向**：读是 `GET /gtd-workbench/tasks`，写是 `POST /gtd-workbench/actions`。
+
+**只有两个写口**：「完成」（`complete`）与「改期」（`reschedule`）。「跳过」不是写口——
+它是纯视图状态、零写入、刷新后回来，**不要**往这条路由上发明第三种动作。
 
 **键名是英文**：请求体与响应体的键与读方向的快照契约同一套写法——
 一条契约两种写法（中文键 / 英文键）是 bug 的温床。
@@ -242,9 +258,21 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 { "action": "complete", "taskId": "<动作 id>", "params": {} }
 ```
 
-- `action`：动作类型。**现在只认 `complete`**（完成）。「改期」是 issue #10，届时**同一个路由**加一个动作类型即可。
+```json
+{ "action": "reschedule", "taskId": "<动作 id>", "params": { "dueDate": "2026-11-09" } }
+```
+
+- `action`：动作类型。`complete`（完成）或 `reschedule`（改期）。
 - `taskId`：目标动作的 id（非空字符串）。
 - `params`：动作参数，可省。「完成」用不上；「改期」要带新的截止日。
+
+**「改期」的参数**：
+
+| 键 | 形状 | 校验 |
+|---|---|---|
+| `params.dueDate` | `YYYY-MM-DD`（**粒度到天**） | 必须是这个形状（带时刻的字符串不行）、必须是**真实存在**的日期（`2026-02-30` 不行）、年份要在 `1970`–`2999` 之间 |
+
+多带别的参数（`title` 之类）一律 `invalid-argument`——改期就是改期限，别的都不从这个写口透出去。
 
 **响应体**：
 
@@ -255,6 +283,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | 失败 | 见下 | `{ "error": { "code": "…", "message": "人能读的失败原因" } }` |
 
 `snapshot` 是**写成功之后重新取的一份**，形状与 `GET` 的响应体完全一致——客户端换主卡不必再发一次读请求。
+改期也一样：写成功后重新取数，主卡与「接下来」按**新的期限**重排。
 `refreshError` 只在「写成功了、但重新取数没成」时出现（这时 `snapshot` 是 `null`）。
 
 **失败类别**（读方向与写方向同一套）：
@@ -270,15 +299,28 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 
 写失败**不会**表现为已完成：失败响应体里没有 `ok`、也没有 `snapshot`。
 
-**滴答 CLI**：允许集合是显式的——两条读命令（`task filter` / `task completed`）加上**一个**写命令
-`task complete`。其余写命令（新建、删除、改期……）拼不进 argv。argv 全仓库只在
-`lib/dida.js` 的 `buildDidaArgs` 一处拼：
+**滴答 CLI**：允许集合是显式的——两条读命令（`task filter` / `task completed`）加上**两个**写命令
+`task complete` 与 `task update`（**只用于改期**）。其余写命令（新建、删除、移动……）拼不进 argv。
+argv 全仓库只在 `lib/dida.js` 的 `buildDidaArgs` 一处拼：
 
 ```
 task filter    --projects <清单 id> --status 0 --json
 task completed --projects <清单 id> --start-date … --end-date … --json
 task complete  <清单 id> <动作 id>
+task update    <动作 id> --id <动作 id> --project <清单 id> --due-date <时间戳> --time-zone <时区>
 ```
+
+**「改期」的安全边界**：`task update` 还能改标题、内容、状态、标签……放行了这条命令**不等于**放行了
+它的其它参数。`buildDidaArgs('task update', …)` 只认 `projectId` / `taskId` / `dueDate` / `timeZone`，
+多带一个键就当场抛 `invalid-argument`。
+
+**「改期」的时区与时刻**：
+
+- 截止日按**动作自己的时区**解释（滴答那侧是 `Asia/Shanghai`，ADR-0008）；动作上没带时区才退回宿主时区。
+  改期**不改**动作的时区。
+- 粒度到天 → 取那天的 `23:59:59`（一天结束的那一刻）。这样一条改到今天的动作，当天不会显得已经过期。
+- 时间戳写成 `yyyy-MM-ddTHH:mm:ss+0000`（滴答要的形状，偏移显式写出来）。
+  `2026-11-09` 在 `Asia/Shanghai` 下是 `2026-11-09T15:59:59+0000`。
 
 清单 id 从**目标动作所在的纸箱**来（快照里每个容器都带 `projectId`）；收集箱的 id 不是 24 位
 （是 `inbox…`），照样能用。

@@ -1,18 +1,24 @@
 /**
  * 写动作：校验与定位（纯函数）。
  *
- * 工作台只开**一个**写口：**完成**（滴答勾选，`status=2`，单口径）。
- * 「改期」是下一票（issue #10）——届时往 {@link WRITE_ACTIONS} 里加一个动作类型即可，
- * **不新开一条路由**：写入始终走同一条 HTTP 契约的写方向。
+ * 工作台只开**两个**写口：**完成**（滴答勾选，`status=2`，单口径）与**改期**
+ * （写 `dueDate`，粒度到天）。「跳过」不是写口——它是纯视图状态、零写入。
+ * 两个写口走**同一条** HTTP 契约的写方向：`POST /gtd-workbench/actions`，
+ * 请求体是「动作类型 + 目标 id + 参数」。
  *
  * 这一层不碰滴答、不碰 HTTP：只回答「这个请求说得通吗」「目标动作在哪个清单里」。
  */
 
-/** 支持的写动作类型。现在只有「完成」。 */
-export const WRITE_ACTIONS = ['complete'];
+import { parseDueDate } from './dates.js';
+
+/** 支持的写动作类型：「完成」与「改期」。 */
+export const WRITE_ACTIONS = ['complete', 'reschedule'];
 
 /** 「完成」的动作类型名。 */
 export const COMPLETE_ACTION = 'complete';
+
+/** 「改期」的动作类型名。 */
+export const RESCHEDULE_ACTION = 'reschedule';
 
 /**
  * 写方向上的失败。`code` 是可判别的失败类别，与读方向同一套语义。
@@ -30,10 +36,43 @@ export class ActionError extends Error {
 }
 
 /**
+ * 校验「改期」的参数。
+ *
+ * 「改期」只认一个参数：`dueDate`（新的截止日，粒度到天）。别的键一律拒绝——
+ * 改期就是改期限，别的都不该从这个写口透出去。
+ * @param {object} params - 请求体里的 `params`。
+ * @returns {{ ok: true, value: { dueDate: string } }
+ *   | { ok: false, code: 'invalid-argument', message: string }} 校验结果。
+ */
+function validateRescheduleParams(params) {
+  for (const key of Object.keys(params)) {
+    if (key !== 'dueDate') {
+      return {
+        ok: false,
+        code: 'invalid-argument',
+        message: `「改期」只认截止日参数「dueDate」，不接受：${key}`,
+      };
+    }
+  }
+  if (!Object.prototype.hasOwnProperty.call(params, 'dueDate')) {
+    return {
+      ok: false,
+      code: 'invalid-argument',
+      message: '「改期」必须带新的截止日：「params.dueDate」（YYYY-MM-DD，粒度到天）',
+    };
+  }
+  const parsed = parseDueDate(params.dueDate);
+  if (!parsed.ok) {
+    return { ok: false, code: 'invalid-argument', message: parsed.message };
+  }
+  return { ok: true, value: { dueDate: parsed.value.text } };
+}
+
+/**
  * 校验一个写请求体。
  *
  * 请求体形如 `{ "action": "complete", "taskId": "<动作 id>", "params": { … } }`：
- * 「params」是留给后续动作类型的（「改期」要带新的截止日），「完成」用不上就省略。
+ * 「params」是留给动作类型的（「改期」要带新的截止日），「完成」用不上就省略。
  *
  * 键名是**英文**：写方向与读方向（快照契约）用同一套英文键，一条契约两种写法是 bug 的温床。
  * @param {unknown} body - 解析后的请求体。
@@ -52,7 +91,7 @@ export function validateAction(body) {
     return {
       ok: false,
       code: 'invalid-argument',
-      message: `不支持的动作：${action}（工作台只开了「完成」这一个写口）`,
+      message: `不支持的动作：${action}（工作台只开了「完成」与「改期」两个写口）`,
     };
   }
   const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : '';
@@ -62,6 +101,12 @@ export function validateAction(body) {
   const params = body.params;
   if (params !== undefined && (params === null || typeof params !== 'object' || Array.isArray(params))) {
     return { ok: false, code: 'invalid-argument', message: '「params」必须是一个 JSON 对象' };
+  }
+  // 「改期」只认截止日：别的键、别的形状都当场拒绝，不去写滴答。
+  if (action === RESCHEDULE_ACTION) {
+    const normalized = validateRescheduleParams(params ?? {});
+    if (!normalized.ok) return normalized;
+    return { ok: true, value: { action, taskId, params: normalized.value } };
   }
   return { ok: true, value: { action, taskId, params: params ?? {} } };
 }
