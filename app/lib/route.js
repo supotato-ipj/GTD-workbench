@@ -12,6 +12,7 @@
 
 import { ActionError } from './actions.js';
 import { CONTAINERS } from './containers.js';
+import { readCapacityConfig } from './config.js';
 import { buildSnapshot, OPEN_STATUS } from './snapshot.js';
 import { DidaError } from './dida.js';
 import { shiftDate, windowOf } from './sunk.js';
@@ -106,21 +107,72 @@ export async function readTasksByProject({ containers, runDida }) {
 }
 
 /**
+ * 解析**本次请求**用的纸箱。
+ *
+ * 纸箱来源可以是数组，也可以是**返回数组的函数**——函数每次调用现取，
+ * 这样改完 `local-config.json` 刷新页面就立刻生效（与容量配置同一口径）。
+ * 解析不出来（函数抛错、返回的不是数组）就退回仓库里的那六个纸箱：**不因为本机配置坏了就把工作台打掉**。
+ * @param {object[] | (() => object[])} source - 纸箱数组或读取器。
+ * @returns {object[]} 本次请求用的纸箱。
+ */
+export function resolveContainers(source) {
+  const value = typeof source === 'function' ? safeCall(source) : source;
+  return Array.isArray(value) ? value : CONTAINERS;
+}
+
+/**
+ * 解析**本次请求**用的容量配置。
+ *
+ * 口径与纸箱一样：可以是对象，也可以是**返回对象的函数**（每次调用现取）。
+ * 解析不出来（函数抛错、返回的不是对象）就当**没有配置**——
+ * 快照那边退回通用默认值（`capacity.asOf` 为 null = 参数未定）。
+ * @param {object | (() => object)} source - 容量配置或读取器。
+ * @returns {object | undefined} 容量配置；没有时是 undefined。
+ */
+export function resolveCapacityConfig(source) {
+  const value = typeof source === 'function' ? safeCall(source) : source;
+  if (value === null || value === undefined) return undefined;
+  return typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+}
+
+/**
+ * 调一个读取器，抛错就当它没给出东西（不把异常往上抛）。
+ * @param {() => unknown} reader - 读取器。
+ * @returns {unknown} 读到的值；抛错时是 undefined。
+ */
+function safeCall(reader) {
+  try {
+    return reader();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * 取数并组装一份快照（读方向与写方向共用）。
  *
  * 写成功之后要**重新取一次数**再回给客户端，靠的就是这一段——
  * 客户端换主卡不必再发一次读请求。
  * @param {object} options - 选项。
- * @param {object[]} options.containers - 六个纸箱。
+ * @param {object[]} options.containers - 六个纸箱（本次请求解析出来的那一份）。
  * @param {(args: { projectId: string, status: number }) => Promise<object[]>} options.runDida - 取一个清单下的动作。
  * @param {string} options.timeZone - 截止时间换算到的时区。
  * @param {Date} options.generatedAt - 生成时刻。
  * @param {() => object[]} [options.loadRecords] - 读 markdown 侧记录。
  * @param {(args: { projectIds: string[], startDate: string, endDate: string }) => Promise<object[]>} [options.runCompleted]
  *   按日期区间取已完成条目（已沉底区用）。
+ * @param {object} [options.capacityConfig] - 容量配置（本次请求解析出来的那一份）。
  * @returns {Promise<object>} 快照。
  */
-export async function collectSnapshot({ containers, runDida, timeZone, generatedAt, loadRecords = () => [], runCompleted }) {
+export async function collectSnapshot({
+  containers,
+  runDida,
+  timeZone,
+  generatedAt,
+  loadRecords = () => [],
+  runCompleted,
+  capacityConfig,
+}) {
   const tasksByProject = await readTasksByProject({ containers, runDida });
   // 已沉底区走另一条命令、按日期区间取已完成，**不与未完成混在一次调用里**。
   const completedTasks = await readCompleted({ runCompleted, containers, timeZone, generatedAt });
@@ -132,6 +184,7 @@ export async function collectSnapshot({ containers, runDida, timeZone, generated
     // markdown 侧读不到不该把整块板子打掉：loadRecords 自己兜住，这里再兜一层。
     records: safeRecords(loadRecords),
     completedTasks,
+    capacityConfig,
   });
 }
 
@@ -139,12 +192,17 @@ export async function collectSnapshot({ containers, runDida, timeZone, generated
  * 造这条路由的处理函数。
  *
  * 依赖全部从外面注入，所以测试能用固定夹具跑同一条路由，不必碰真实滴答。
+ *
+ * `containers` 与 `capacityConfig` **既可以是值，也可以是返回值的函数**：
+ * 函数在**每次请求**里现取——改完本机配置（清单 id／容量参数）刷新页面就立刻生效。
+ * 一次请求内只解析一次：取数、已沉底区与快照用的是同一份。
  * @param {object} options - 处理函数的依赖。
  * @param {{ requestRejection: (req: object) => number | undefined }} options.connection - 宿主连接服务（访问守卫）。
  * @param {(args: { projectId: string, status: number }) => Promise<object[]>} options.runDida - 取一个清单下的动作。
  * @param {string} options.timeZone - 截止时间换算到的时区。
  * @param {() => Date} [options.now] - 生成时刻。
- * @param {object[]} [options.containers] - 本次取数的纸箱，默认六个容器（ADR-0007 的固定顺序）。
+ * @param {object[] | (() => object[])} [options.containers] - 本次取数的纸箱，默认六个容器（ADR-0007 的固定顺序）。
+ * @param {object | (() => object)} [options.capacityConfig] - 容量配置，默认每次请求重读本机配置。
  * @param {() => object[]} [options.loadRecords] - 读 markdown 侧记录（Host 从仓库读）。
  * @param {(args: { projectIds: string[], startDate: string, endDate: string }) => Promise<object[]>} [options.runCompleted]
  *   按日期区间取已完成条目（已沉底区用）；不给就当没有已完成条目。
@@ -156,6 +214,7 @@ export function createTasksHandler({
   timeZone,
   now = () => new Date(),
   containers = CONTAINERS,
+  capacityConfig = () => readCapacityConfig(),
   loadRecords = () => [],
   runCompleted = async () => [],
 }) {
@@ -173,13 +232,17 @@ export function createTasksHandler({
       return;
     }
     try {
+      // 本次请求解析一次：纸箱与容量配置都用这一份，下面全程不再解析。
+      const resolvedContainers = resolveContainers(containers);
+      const resolvedCapacity = resolveCapacityConfig(capacityConfig);
       const snapshot = await collectSnapshot({
-        containers,
+        containers: resolvedContainers,
         runDida,
         runCompleted,
         loadRecords,
         timeZone,
         generatedAt: now(),
+        capacityConfig: resolvedCapacity,
       });
       sendJson(res, 200, snapshot);
     } catch (error) {

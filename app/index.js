@@ -11,6 +11,7 @@
 import { createTasksHandler, TASKS_ROUTE_PATH } from './lib/route.js';
 import { createActionsHandler, ACTIONS_ROUTE_PATH } from './lib/write-route.js';
 import { runDidaAction, runDidaTaskCompleted, runDidaTaskFilter } from './lib/dida.js';
+import { readCapacityConfig, readContainers } from './lib/config.js';
 import { loadRecords } from './lib/records.js';
 
 /** 宿主服务：`webServer` 开路由，`connection` 做访问守卫。 */
@@ -29,6 +30,11 @@ export function apply(ctx) {
     loadRecords: () => loadRecords(),
     // 已沉底区按日期区间取已完成条目，走的是另一条读命令。
     runCompleted: runDidaTaskCompleted,
+    // 纸箱与容量参数都从**本机配置**读（`local-config.json`，不进仓库）：
+    // 传函数而不是值——每次请求现取，改完配置刷新页面就立刻生效。
+    // 读不到就退回仓库里的虚构占位与通用默认值，不抛。
+    containers: () => readContainers(),
+    capacityConfig: () => readCapacityConfig(),
   };
   const handler = createTasksHandler(shared);
   // 写方向：写动作的执行由 CLI 层注入（现在只有「完成」一个动作类型）。

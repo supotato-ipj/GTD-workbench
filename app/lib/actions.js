@@ -32,8 +32,10 @@ export class ActionError extends Error {
 /**
  * 校验一个写请求体。
  *
- * 请求体形如 `{ "动作": "complete", "目标id": "<动作 id>", "参数": { … } }`：
- * 「参数」是留给后续动作类型的（「改期」要带新的截止日），「完成」用不上就省略。
+ * 请求体形如 `{ "action": "complete", "taskId": "<动作 id>", "params": { … } }`：
+ * 「params」是留给后续动作类型的（「改期」要带新的截止日），「完成」用不上就省略。
+ *
+ * 键名是**英文**：写方向与读方向（快照契约）用同一套英文键，一条契约两种写法是 bug 的温床。
  * @param {unknown} body - 解析后的请求体。
  * @returns {{ ok: true, value: { action: string, taskId: string, params: object } }
  *   | { ok: false, code: 'invalid-argument', message: string }} 校验结果。
@@ -42,9 +44,9 @@ export function validateAction(body) {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     return { ok: false, code: 'invalid-argument', message: '请求体必须是一个 JSON 对象' };
   }
-  const action = typeof body['动作'] === 'string' ? body['动作'].trim() : '';
+  const action = typeof body.action === 'string' ? body.action.trim() : '';
   if (action.length === 0) {
-    return { ok: false, code: 'invalid-argument', message: '缺少动作类型：「动作」必须是非空字符串' };
+    return { ok: false, code: 'invalid-argument', message: '缺少动作类型：「action」必须是非空字符串' };
   }
   if (!WRITE_ACTIONS.includes(action)) {
     return {
@@ -53,13 +55,13 @@ export function validateAction(body) {
       message: `不支持的动作：${action}（工作台只开了「完成」这一个写口）`,
     };
   }
-  const taskId = typeof body['目标id'] === 'string' ? body['目标id'].trim() : '';
+  const taskId = typeof body.taskId === 'string' ? body.taskId.trim() : '';
   if (taskId.length === 0) {
-    return { ok: false, code: 'invalid-argument', message: '缺少目标：「目标id」必须是非空字符串' };
+    return { ok: false, code: 'invalid-argument', message: '缺少目标：「taskId」必须是非空字符串' };
   }
-  const params = body['参数'];
+  const params = body.params;
   if (params !== undefined && (params === null || typeof params !== 'object' || Array.isArray(params))) {
-    return { ok: false, code: 'invalid-argument', message: '「参数」必须是一个 JSON 对象' };
+    return { ok: false, code: 'invalid-argument', message: '「params」必须是一个 JSON 对象' };
   }
   return { ok: true, value: { action, taskId, params: params ?? {} } };
 }
