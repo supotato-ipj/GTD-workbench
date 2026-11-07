@@ -9,8 +9,9 @@
  *
  * 键名是**英文**：与读方向的快照契约同一套写法——一条契约两种写法是 bug 的温床。
  *
- * 现在只认**一个**动作类型：`complete`（完成 = 滴答勾选，`status=2`，单口径）。
- * 「改期」是下一票（issue #10）：**同一个路由加一个动作类型**即可，不新开一条路由。
+ * 认**两个**动作类型：`complete`（完成 = 滴答勾选，`status=2`，单口径）与
+ * `reschedule`（改期 = 写新的 `dueDate`，粒度到天）。两个写口走**同一条路由**。
+ * 「跳过」不是写口：它是纯视图状态、零写入。
  *
  * 写成功之后**重新取一次数**再回给客户端（响应体里的 `snapshot`），
  * 客户端换主卡不必再发一次读请求，画布与滴答也不会差一拍。
@@ -84,7 +85,7 @@ async function locateTarget({ containers, runDida, taskId }) {
  * @param {object} options - 处理函数的依赖。
  * @param {{ requestRejection: (req: object) => number | undefined }} options.connection - 宿主连接服务（访问守卫）。
  * @param {(args: { projectId: string, status: number }) => Promise<object[]>} options.runDida - 取一个清单下的动作。
- * @param {(args: { action: string, projectId: string, taskId: string, params: object }) => Promise<unknown>} options.runAction - 执行写动作。
+ * @param {(args: { action: string, projectId: string, taskId: string, params: object, timeZone: string }) => Promise<unknown>} options.runAction - 执行写动作。
  * @param {string} options.timeZone - 截止时间换算到的时区。
  * @param {() => Date} [options.now] - 生成时刻。
  * @param {object[] | (() => object[])} [options.containers] - 六个纸箱，默认六个容器（ADR-0007 的固定顺序）。
@@ -136,7 +137,16 @@ export function createActionsHandler({
         throw new ActionError('not-found', `找不到目标动作：${taskId}`);
       }
 
-      await runAction({ action, projectId: located.projectId, taskId, params });
+      // 改期按**动作自己的时区**解释新日期（滴答那侧是 Asia/Shanghai，ADR-0008）；
+      // 动作上没带时区才退回宿主时区。改期**不改**动作的时区。
+      const ownZone = typeof located.task?.timeZone === 'string' ? located.task.timeZone.trim() : '';
+      await runAction({
+        action,
+        projectId: located.projectId,
+        taskId,
+        params,
+        timeZone: ownZone.length > 0 ? ownZone : timeZone,
+      });
 
       // 写成功 → 重新取数，把新快照一并回给客户端。
       let snapshot = null;

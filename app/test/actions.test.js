@@ -36,10 +36,13 @@ test('动作校验：缺动作类型 → invalid-argument', () => {
 });
 
 test('动作校验：不支持的动作 → invalid-argument', () => {
-  const parsed = validateAction({ action: 'reschedule', taskId: 'abc123' });
-  assert.equal(parsed.ok, false);
-  assert.equal(parsed.code, 'invalid-argument');
-  assert.match(parsed.message, /不支持的动作/);
+  // 「跳过」不是写口：它是纯视图状态、零写入（issue #1 的写口一节）。
+  for (const action of ['skip', 'delete', 'reschedual', 'Reschedule']) {
+    const parsed = validateAction({ action, taskId: 'abc123' });
+    assert.equal(parsed.ok, false, `动作 ${action} 不该被放行`);
+    assert.equal(parsed.code, 'invalid-argument');
+    assert.match(parsed.message, /不支持的动作/);
+  }
 });
 
 test('动作校验：目标 id 不是非空字符串 → invalid-argument', () => {
@@ -74,8 +77,68 @@ test('动作校验：请求体不是一个 JSON 对象 → invalid-argument', ()
   }
 });
 
-test('写口：只开了「完成」一个动作类型', () => {
-  assert.deepEqual(WRITE_ACTIONS, ['complete']);
+test('写口：只开了「完成」与「改期」两个动作类型', () => {
+  assert.deepEqual(WRITE_ACTIONS, ['complete', 'reschedule']);
+});
+
+test('改期：缺截止日 → invalid-argument', () => {
+  for (const params of [undefined, {}, { 截止日: '2026-11-09' }]) {
+    const parsed = validateAction({ action: 'reschedule', taskId: 'abc123', params });
+    assert.equal(parsed.ok, false, `这份参数不该通过：${JSON.stringify(params)}`);
+    assert.equal(parsed.code, 'invalid-argument');
+    assert.match(parsed.message, /dueDate/);
+  }
+});
+
+test('改期：截止日必须是 YYYY-MM-DD（粒度到天，不接受带时刻的字符串）', () => {
+  for (const dueDate of ['2026-11-09T10:00:00Z', '2026-11-09 10:00', '2026-11-9', '20261109', '2026/11/09', '2026-11', '', '   ', 20261109, null, {}]) {
+    const parsed = validateAction({ action: 'reschedule', taskId: 'abc123', params: { dueDate } });
+    assert.equal(parsed.ok, false, `截止日 ${JSON.stringify(dueDate)} 不该通过`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+});
+
+test('改期：截止日必须是真实存在的日期', () => {
+  for (const dueDate of ['2026-02-30', '2026-13-01', '2026-00-10', '2026-04-31', '2026-02-29']) {
+    const parsed = validateAction({ action: 'reschedule', taskId: 'abc123', params: { dueDate } });
+    assert.equal(parsed.ok, false, `截止日 ${dueDate} 不该通过`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+  // 2028 是闰年：2 月 29 日存在。
+  const leap = validateAction({ action: 'reschedule', taskId: 'abc123', params: { dueDate: '2028-02-29' } });
+  assert.equal(leap.ok, true);
+});
+
+test('改期：越界的年份 → invalid-argument', () => {
+  for (const dueDate of ['1900-01-01', '1899-12-31', '3000-01-01', '9999-12-31']) {
+    const parsed = validateAction({ action: 'reschedule', taskId: 'abc123', params: { dueDate } });
+    assert.equal(parsed.ok, false, `截止日 ${dueDate} 不该通过`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+});
+
+test('改期：合法的截止日 → 规范化后只带 dueDate', () => {
+  const parsed = validateAction({ action: 'reschedule', taskId: '  abc123  ', params: { dueDate: ' 2026-11-09 ' } });
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.value, { action: 'reschedule', taskId: 'abc123', params: { dueDate: '2026-11-09' } });
+});
+
+test('改期：参数里多带别的键 → invalid-argument（改期只认截止日）', () => {
+  for (const params of [
+    { dueDate: '2026-11-09', title: '换个标题' },
+    { dueDate: '2026-11-09', content: '换个内容' },
+    { dueDate: '2026-11-09', status: 2 },
+  ]) {
+    const parsed = validateAction({ action: 'reschedule', taskId: 'abc123', params });
+    assert.equal(parsed.ok, false, `这份参数不该通过：${JSON.stringify(params)}`);
+    assert.equal(parsed.code, 'invalid-argument');
+  }
+});
+
+test('改期：目标 id 缺失照样 invalid-argument', () => {
+  const parsed = validateAction({ action: 'reschedule', params: { dueDate: '2026-11-09' } });
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.code, 'invalid-argument');
 });
 
 test('目标定位：在纸箱里找到目标动作，给出它所在清单的 id', () => {

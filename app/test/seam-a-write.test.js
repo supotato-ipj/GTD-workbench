@@ -24,12 +24,13 @@ const EXECUTION_PROJECT_ID = '7c4e00000000000000000002';
 const TARGET_ID = '7c4e0000000000000000000d';
 
 /**
- * 造一条写路由：滴答那边是替身，写动作会真的把那条动作标成已完成。
+ * 造一条写路由：滴答那边是替身，写动作会真的把那条动作标成已完成或改掉期限。
  * @param {object} [overrides] - 覆盖项（换掉 connection / runAction 就能测失败面）。
- * @returns {{ handler: Function, writes: object[], reads: number }} 路由与它做过的动作、读过的次数。
+ * @returns {{ handler: Function, writes: object[], details: object[], reads: number }} 路由与它做过的动作、读过的次数。
  */
 function actionsRouteUnderTest(overrides = {}) {
   const writes = [];
+  const details = [];
   let reads = 0;
   const tasks = rawTasks.map((task) => ({ ...task }));
   const handler = createActionsHandler({
@@ -39,12 +40,18 @@ function actionsRouteUnderTest(overrides = {}) {
       return tasks.filter((task) => task.projectId === projectId);
     },
     runCompleted: async () => [],
-    runAction: async ({ action, projectId, taskId }) => {
+    runAction: async ({ action, projectId, taskId, params, timeZone }) => {
       writes.push({ action, projectId, taskId });
+      details.push({ action, projectId, taskId, params, timeZone });
       const task = tasks.find((item) => item.id === taskId);
       if (task !== undefined) {
-        task.status = 2;
-        task.completedTime = '2026-11-05T02:00:00.000+0000';
+        if (action === 'complete') {
+          task.status = 2;
+          task.completedTime = '2026-11-05T02:00:00.000+0000';
+        } else if (action === 'reschedule') {
+          // 模拟滴答那边把新的截止日存了下来：那天 23:59:59（Asia/Shanghai）= UTC 15:59:59。
+          task.dueDate = '2026-11-09T15:59:59.000+0000';
+        }
       }
       return { ok: true };
     },
@@ -52,7 +59,7 @@ function actionsRouteUnderTest(overrides = {}) {
     now: () => new Date(GENERATED_AT),
     ...overrides,
   });
-  return { handler, writes, reads: () => reads };
+  return { handler, writes, details, reads: () => reads };
 }
 
 /**
@@ -211,6 +218,139 @@ test('接缝 A（写）：写成功了但刷新没成 → 说清是刷新失败�
     },
   });
   const result = await withRoute(handler, async (baseUrl) => post(baseUrl, { action: 'complete', taskId: TARGET_ID }));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true, '写成功了却被说成失败');
+  assert.equal(result.body.snapshot, null);
+  assert.equal(result.body.refreshError.code, 'cli-failed');
+  assert.equal(writes.length, 1);
+});
+
+test('接缝 A（写）：改期成功 → 明确成功，快照里那条动作的期限已按新日期更新', async () => {
+  const { handler, writes, details } = actionsRouteUnderTest();
+  const result = await withRoute(handler, async (baseUrl) =>
+    post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params: { dueDate: '2026-11-09' } }),
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.action, 'reschedule');
+  assert.equal(result.body.taskId, TARGET_ID);
+  // 写动作是替身做的：它拿到的是「目标动作所在清单的 id + 动作 id + 新的截止日」。
+  assert.deepEqual(writes, [{ action: 'reschedule', projectId: EXECUTION_PROJECT_ID, taskId: TARGET_ID }]);
+  assert.deepEqual(details[0].params, { dueDate: '2026-11-09' });
+  // 快照是写完之后重新取的：那条动作的期限已经是新日期。
+  const execution = result.body.snapshot.containers.find((container) => container.key === 'execution');
+  const note = execution.notes.find((item) => item.id === TARGET_ID);
+  assert.equal(note.dueDate, '2026-11-09');
+  assert.equal(note.dueLocal, '2026-11-09 23:59');
+  assert.equal(note.dueTime, '23:59');
+});
+
+test('接缝 A（写）：改期后队列按新的期限重排', async () => {
+  const { handler } = actionsRouteUnderTest();
+  const result = await withRoute(handler, async (baseUrl) =>
+    post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params: { dueDate: '2026-11-09' } }),
+  );
+  assert.equal(result.status, 200);
+  const execution = result.body.snapshot.containers.find((container) => container.key === 'execution');
+  const ids = execution.notes.map((item) => item.id);
+  // 改到 11/9 之后，它不再排在最前面（原先它是最紧的一条）。
+  assert.equal(ids[ids.length - 1], TARGET_ID, '改期后没有按新期限重排');
+  // 「接下来」也按新期限重排：它被挤到 11/9，就不该再占着今天的位置。
+  const next = result.body.snapshot.focus.next;
+  assert.equal(
+    next.some((item) => item.id === TARGET_ID),
+    false,
+    '改期后「接下来」没有按新期限重排',
+  );
+});
+
+test('接缝 A（写）：改期按动作自己的时区解释新日期', async () => {
+  const { handler, details } = actionsRouteUnderTest();
+  const result = await withRoute(handler, async (baseUrl) =>
+    post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params: { dueDate: '2026-11-09' } }),
+  );
+  assert.equal(result.status, 200);
+  // 夹具里那条动作带的是 Asia/Shanghai（滴答那侧的口径，ADR-0008）。
+  assert.equal(details[0].timeZone, 'Asia/Shanghai');
+});
+
+test('接缝 A（写）：改期的参数非法 → invalid-argument，不是 500，也不碰滴答', async () => {
+  for (const params of [
+    undefined,
+    {},
+    { dueDate: '2026-02-30' },
+    { dueDate: '2026-11-09T10:00:00Z' },
+    { dueDate: '1900-01-01' },
+    { dueDate: '3000-01-01' },
+    { dueDate: '2026-11-09', title: '换个标题' },
+  ]) {
+    const { handler, writes } = actionsRouteUnderTest();
+    const result = await withRoute(handler, async (baseUrl) =>
+      post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params }),
+    );
+    assert.equal(result.status, 400, `这份参数不该通过：${JSON.stringify(params)}`);
+    assert.equal(result.body.error.code, 'invalid-argument');
+    assert.notEqual(result.body.error.code, 'internal-error');
+    assert.deepEqual(writes, [], '参数非法却写了滴答');
+  }
+});
+
+test('接缝 A（写）：改期的目标不存在 → not-found，不是 500', async () => {
+  const { handler, writes } = actionsRouteUnderTest();
+  const result = await withRoute(handler, async (baseUrl) =>
+    post(baseUrl, { action: 'reschedule', taskId: '根本不存在的那条', params: { dueDate: '2026-11-09' } }),
+  );
+  assert.equal(result.status, 404);
+  assert.equal(result.body.error.code, 'not-found');
+  assert.deepEqual(writes, [], '目标不存在却写了滴答');
+});
+
+test('接缝 A（写）：改期时滴答执行失败 → cli-failed，与「完成」同一套语义', async () => {
+  const { handler } = actionsRouteUnderTest({
+    runAction: async () => {
+      throw new DidaError('cli-failed', 'DIDA API 错误 500: boom');
+    },
+  });
+  const result = await withRoute(handler, async (baseUrl) =>
+    post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params: { dueDate: '2026-11-09' } }),
+  );
+  assert.equal(result.status, 502);
+  assert.equal(result.body.error.code, 'cli-failed');
+  assert.equal(result.body.ok, undefined);
+  assert.equal(result.body.snapshot, undefined);
+});
+
+test('接缝 A（写）：改期时滴答未登录 → not-authenticated，与「完成」同一套语义', async () => {
+  const { handler } = actionsRouteUnderTest({
+    runAction: async () => {
+      throw new DidaError('not-authenticated', '未找到 access token。请先运行 `dida auth login` 登录。');
+    },
+  });
+  const result = await withRoute(handler, async (baseUrl) =>
+    post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params: { dueDate: '2026-11-09' } }),
+  );
+  assert.equal(result.status, 401);
+  assert.equal(result.body.error.code, 'not-authenticated');
+  assert.match(result.body.error.message, /dida auth login/);
+  assert.equal(result.body.ok, undefined);
+});
+
+test('接缝 A（写）：改期写成功了但刷新没成 → 说清是刷新失败，不说成写失败', async () => {
+  let written = false;
+  const { handler, writes } = actionsRouteUnderTest({
+    runDida: async ({ projectId }) => {
+      if (written) throw new DidaError('cli-failed', 'DIDA API 错误 500: boom');
+      return rawTasks.filter((task) => task.projectId === projectId);
+    },
+    runAction: async ({ action, projectId, taskId }) => {
+      writes.push({ action, projectId, taskId });
+      written = true;
+      return { ok: true };
+    },
+  });
+  const result = await withRoute(handler, async (baseUrl) =>
+    post(baseUrl, { action: 'reschedule', taskId: TARGET_ID, params: { dueDate: '2026-11-09' } }),
+  );
   assert.equal(result.status, 200);
   assert.equal(result.body.ok, true, '写成功了却被说成失败');
   assert.equal(result.body.snapshot, null);

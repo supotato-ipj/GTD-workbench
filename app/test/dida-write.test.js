@@ -24,11 +24,16 @@ import {
 const EXECUTION_PROJECT_ID = '7c4e00000000000000000002';
 const TASK_ID = '7c4e0000000000000000000d';
 
-test('命令集合：读命令照旧，写口只开「完成」一个', () => {
-  assert.deepEqual([...ALLOWED_COMMANDS].sort(), ['task complete', 'task completed', 'task filter']);
-  // 允许集合里**只有一条**写命令：「完成」。「改期」留给 issue #10。
+test('命令集合：读命令照旧，写口只开「完成」与「改期」两个', () => {
+  assert.deepEqual([...ALLOWED_COMMANDS].sort(), [
+    'task complete',
+    'task completed',
+    'task filter',
+    'task update',
+  ]);
+  // 允许集合里**只有两条**写命令：「完成」与「改期」。别的写命令一律拼不进来。
   const writes = [...ALLOWED_COMMANDS].filter((command) => !READ_COMMANDS.has(command));
-  assert.deepEqual(writes, ['task complete']);
+  assert.deepEqual(writes.sort(), ['task complete', 'task update']);
 });
 
 test('argv：完成是位置参数——清单 id 与动作 id 各一个', () => {
@@ -58,8 +63,119 @@ test('argv：读命令照旧（分清单 + 状态过滤 + json）', () => {
   ]);
 });
 
+test('argv：改期只带 --due-date 与必要的 --id/--project/--time-zone', () => {
+  assert.deepEqual(
+    buildDidaArgs('task update', {
+      projectId: EXECUTION_PROJECT_ID,
+      taskId: TASK_ID,
+      dueDate: '2026-11-09',
+      timeZone: 'Asia/Shanghai',
+    }),
+    [
+      'task',
+      'update',
+      TASK_ID,
+      '--id',
+      TASK_ID,
+      '--project',
+      EXECUTION_PROJECT_ID,
+      '--due-date',
+      '2026-11-09T15:59:59+0000',
+      '--time-zone',
+      'Asia/Shanghai',
+    ],
+  );
+});
+
+test('argv：改期只放行 --due-date —— 别的参数一律拒绝', () => {
+  // `task update` 还能改标题、内容、状态……放行了这条命令不等于放行了这些参数。
+  for (const extra of [
+    { title: '换个标题' },
+    { content: '换个内容' },
+    { status: 2 },
+    { tags: '紧急' },
+    { startDate: '2026-11-09T01:00:00+0000' },
+    { endDate: '2026-11-09T01:00:00+0000' },
+    { priority: 5 },
+  ]) {
+    assert.throws(
+      () =>
+        buildDidaArgs('task update', {
+          projectId: EXECUTION_PROJECT_ID,
+          taskId: TASK_ID,
+          dueDate: '2026-11-09',
+          timeZone: 'Asia/Shanghai',
+          ...extra,
+        }),
+      /只允许改截止日/,
+      `改期不该接受参数：${Object.keys(extra).join(',')}`,
+    );
+  }
+});
+
+test('argv：改期缺截止日、缺时区、缺 id → 当场报错，不去拼一条废命令', () => {
+  assert.throws(
+    () =>
+      buildDidaArgs('task update', {
+        projectId: EXECUTION_PROJECT_ID,
+        taskId: TASK_ID,
+        timeZone: 'Asia/Shanghai',
+      }),
+    /截止日/,
+  );
+  assert.throws(
+    () =>
+      buildDidaArgs('task update', {
+        projectId: EXECUTION_PROJECT_ID,
+        taskId: TASK_ID,
+        dueDate: '2026-11-09',
+      }),
+    /时区/,
+  );
+  assert.throws(
+    () => buildDidaArgs('task update', { taskId: TASK_ID, dueDate: '2026-11-09', timeZone: 'Asia/Shanghai' }),
+    /清单 id/,
+  );
+  assert.throws(
+    () => buildDidaArgs('task update', { projectId: EXECUTION_PROJECT_ID, dueDate: '2026-11-09', timeZone: 'Asia/Shanghai' }),
+    /动作 id/,
+  );
+});
+
+test('argv：改期的截止日非法 → 当场报错，不去拼一条废命令', () => {
+  for (const dueDate of ['2026-02-30', '2026-11-09T10:00:00Z', '1900-01-01', '3000-01-01', '']) {
+    assert.throws(
+      () =>
+        buildDidaArgs('task update', {
+          projectId: EXECUTION_PROJECT_ID,
+          taskId: TASK_ID,
+          dueDate,
+          timeZone: 'Asia/Shanghai',
+        }),
+      /截止日/,
+      `截止日 ${dueDate} 不该被放行`,
+    );
+  }
+});
+
+test('argv：动作 id 不能以 - 开头（会被当成选项）', () => {
+  for (const command of ['task complete', 'task update']) {
+    assert.throws(
+      () =>
+        buildDidaArgs(command, {
+          projectId: EXECUTION_PROJECT_ID,
+          taskId: '--title',
+          dueDate: '2026-11-09',
+          timeZone: 'Asia/Shanghai',
+        }),
+      /动作 id/,
+      `${command} 不该接受以 - 开头的 id`,
+    );
+  }
+});
+
 test('argv：其它写命令一律拼不进来', () => {
-  for (const command of ['task create', 'task delete', 'task update', 'task move', 'project delete']) {
+  for (const command of ['task create', 'task delete', 'task move', 'project delete']) {
     assert.throws(
       () => buildDidaArgs(command, { projectId: EXECUTION_PROJECT_ID, taskId: TASK_ID }),
       /拒绝执行/,
