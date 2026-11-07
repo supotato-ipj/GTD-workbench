@@ -57,7 +57,7 @@ async function snapshotUnderTest() {
  */
 async function renderBoard(snapshot) {
   const { module } = createClientModule(clientPath);
-  const html = renderToStaticMarkup(React.createElement(module.components.WorkbenchPanel, { initialSnapshot: snapshot }));
+  const html = renderToStaticMarkup(React.createElement(module.components.WorkbenchPanel, { initialSnapshot: snapshot, initialView: 'canvas' }));
   return new JSDOM(`<!doctype html><html><body>${html}</body></html>`).window.document;
 }
 
@@ -184,7 +184,7 @@ test('接缝 B：无截止时间的条目有明确归属，不静默消失', asy
 
 test('接缝 B：点折叠条能看到视野外的段，再点收起', async () => {
   const snapshot = await snapshotUnderTest();
-  const mount = await mountPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const mount = await mountPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const executionBox = () => mount.document.querySelector('[data-role="box"][data-container="execution"]');
     const segmentsOf = () => [...executionBox().querySelectorAll('[data-role="segment"]')].map((node) => node.getAttribute('data-segment'));

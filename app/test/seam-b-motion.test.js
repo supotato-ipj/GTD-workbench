@@ -47,7 +47,7 @@ async function snapshotOf(overrides = {}) {
 
 test('入场：便贴按时间轴顺序依次贴上', async () => {
   const snapshot = await snapshotOf();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const notes = [...env.document.querySelectorAll('[data-role="note"]')];
     assert.ok(notes.length >= 3, '画布上的便贴太少，测不出顺序');
@@ -68,7 +68,7 @@ test('入场：便贴按时间轴顺序依次贴上', async () => {
 
 test('拿起弹回：拖起来有位移与倾斜，松手回原位，不落位', async () => {
   const snapshot = await snapshotOf();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const note = env.document.querySelector('[data-role="note"]');
     assert.ok(note, '画布上没有便贴');
@@ -96,7 +96,7 @@ test('拿起弹回：拖起来有位移与倾斜，松手回原位，不落位',
 
 test('拿起弹回：手抖不到阈值不算拖，那一下仍然是「点开抽屉」', async () => {
   const snapshot = await snapshotOf();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const note = env.document.querySelector('[data-role="note"]');
     const noteId = note.getAttribute('data-note-id');
@@ -134,7 +134,7 @@ test('状态迁移：拉数后只给真实变化的便贴打标记', async () =>
   const initial = { ...first, sunk: { ...first.sunk, days: [], counts: {} } };
 
   const fetcher = createFetchController();
-  const env = await mountPanel({ clientPath, props: { initialSnapshot: initial }, fetchImpl: fetcher.fetchImpl });
+  const env = await mountPanel({ clientPath, props: { initialSnapshot: initial, initialView: 'canvas' }, fetchImpl: fetcher.fetchImpl });
   try {
     // 第一次打开：没有「上次」，不该演任何变化。
     assert.equal(env.document.querySelectorAll('[data-motion="completed"]').length, 0);
@@ -172,7 +172,7 @@ test('状态迁移：拉数后只给真实变化的便贴打标记', async () =>
 test('状态迁移：差异基准存在浏览器本地，不落仓库文件', async () => {
   const first = await snapshotOf();
   const fetcher = createFetchController();
-  const env = await mountPanel({ clientPath, props: { initialSnapshot: first }, fetchImpl: fetcher.fetchImpl });
+  const env = await mountPanel({ clientPath, props: { initialSnapshot: first, initialView: 'canvas' }, fetchImpl: fetcher.fetchImpl });
   try {
     const keys = Object.keys(env.window.localStorage);
     assert.ok(keys.includes('gtd-workbench.baseline.v1'), `差异基准没写进 localStorage：${keys.join(',')}`);
@@ -212,7 +212,7 @@ test('状态迁移：浏览器侧的差异逻辑与 app/lib/diff.js 不漂', asy
 test('状态迁移：没有基线时第一次拉数不演变化', async () => {
   const snapshot = await snapshotOf();
   const fetcher = createFetchController();
-  const env = await mountPanel({ clientPath, fetchImpl: fetcher.fetchImpl });
+  const env = await mountPanel({ clientPath, props: { initialView: 'canvas' }, fetchImpl: fetcher.fetchImpl });
   try {
     await env.flush();
     fetcher.respond({ status: 200, body: snapshot });

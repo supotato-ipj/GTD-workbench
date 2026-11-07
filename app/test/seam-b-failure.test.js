@@ -173,7 +173,7 @@ test('接缝 B：拉数进行中有明确的加载态', async () => {
 
 test('接缝 B：刷新后画布反映最新数据', async () => {
   const controller = createFetchController();
-  const panel = await mountPanel({ clientPath, props: {}, fetchImpl: controller.fetchImpl });
+  const panel = await mountPanel({ clientPath, props: { initialView: 'canvas' }, fetchImpl: controller.fetchImpl });
   try {
     controller.respond({ status: 200, body: snapshot });
     await panel.flush();

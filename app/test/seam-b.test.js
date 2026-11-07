@@ -104,7 +104,7 @@ test('接缝 B：界面文案与 locale 文件一致（中文、英文都不漂�
 });
 
 test('接缝 B：画布上画出一个纸箱，箱内是执行清单的便贴', () => {
-  const document = renderPanel({ initialSnapshot: snapshot });
+  const document = renderPanel({ initialSnapshot: snapshot, initialView: 'canvas' });
   const boxes = document.querySelectorAll('[data-role="box"]');
   assert.equal(boxes.length, 1);
   assert.equal(boxes[0].getAttribute('data-container'), 'execution');
@@ -115,7 +115,7 @@ test('接缝 B：画布上画出一个纸箱，箱内是执行清单的便贴', 
 });
 
 test('接缝 B：便贴渲染出标题', () => {
-  const document = renderPanel({ initialSnapshot: snapshot });
+  const document = renderPanel({ initialSnapshot: snapshot, initialView: 'canvas' });
   const titles = [...document.querySelectorAll('[data-role="note"] [data-role="title"]')].map((node) => node.textContent);
   assert.deepEqual(titles, [
     '追问业务部：归期 + 5 课题反馈',
@@ -126,7 +126,7 @@ test('接缝 B：便贴渲染出标题', () => {
 });
 
 test('接缝 B：便贴渲染出时间档色条，深度／事务／日清三色可辨', () => {
-  const document = renderPanel({ initialSnapshot: snapshot });
+  const document = renderPanel({ initialSnapshot: snapshot, initialView: 'canvas' });
   const bands = [...document.querySelectorAll('[data-role="time-band"]')];
   assert.equal(bands.length, 4);
   const colors = new Map();
@@ -150,7 +150,7 @@ test('接缝 B：便贴渲染出时间档色条，深度／事务／日清三色
 });
 
 test('接缝 B：便贴渲染出优先级角标', () => {
-  const document = renderPanel({ initialSnapshot: snapshot });
+  const document = renderPanel({ initialSnapshot: snapshot, initialView: 'canvas' });
   const badges = [...document.querySelectorAll('[data-role="note"] [data-role="priority"]')];
   assert.equal(badges.length, 4);
   assert.deepEqual(
@@ -160,7 +160,7 @@ test('接缝 B：便贴渲染出优先级角标', () => {
 });
 
 test('接缝 B：便贴上的截止时间按本地时区显示', () => {
-  const document = renderPanel({ initialSnapshot: snapshot });
+  const document = renderPanel({ initialSnapshot: snapshot, initialView: 'canvas' });
   const dues = [...document.querySelectorAll('[data-role="note"] [data-role="due"]')].map((node) => node.textContent);
   assert.deepEqual(dues, ['2026-11-04 14:15', '2026-11-04 17:30', '2026-11-05 10:00', '2026-11-06 15:00']);
 });

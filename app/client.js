@@ -69,8 +69,40 @@ window.__ModuleLoader__.load({
       recordNone: '无对应记录',
       recordUnwritten: '未写明',
       recordSource: '来源',
-      focusHeading: '本周主攻',
-      focusEmpty: '本周没有带深度标签的动作',
+      /* 本周主攻带（v1 的「本周主攻」，改名 mainPush 以免与 v2 的焦点混） */
+      mainPushHeading: '本周主攻',
+      mainPushEmpty: '本周没有带深度标签的动作',
+      /* v2:focus 焦点视图：顶部常驻、行动卡、「接下来」、下钻层 */
+      viewCanvasLabel: '六箱画布',
+      viewFocusLabel: '焦点视图',
+      focusViewPending: '焦点视图待接入',
+      focusDailyLabel: '今日日清',
+      focusDailyUndone: '未还',
+      focusRemainingLabel: '剩余可排时间',
+      focusMinutesUnit: '分钟',
+      focusQuotaLabel: '深度名额',
+      focusCapacityAsOf: '容量参数定于',
+      focusCapacityAsOfUnset: '容量参数未定于某日（用的是通用默认值）',
+      focusCardWorkLabel: '工作内容',
+      focusCardDueLabel: '完成时限',
+      focusCardRequirementLabel: '完成要求',
+      focusCardEstimateLabel: '预计耗时',
+      focusEstimateUnset: '未估算',
+      focusCardOverdue: '已逾期',
+      focusCapacityFits: '装得下',
+      focusCapacityNoFit: '装不下',
+      focusCapacityUnknown: '还不知道要多久',
+      focusCapacityNoteFits: '今日剩余 {minutes} 分钟，这件 {estimate} 分钟',
+      focusCapacityNoteNoFits: '今日只剩 {minutes} 分钟，这件要 {estimate} 分钟',
+      focusNextHeading: '接下来',
+      focusNextHint: '点一条即换主卡',
+      focusNextEmpty: '接下来没有别的了',
+      focusCardEmpty: '现在没有一件该做的事',
+      focusDrillEntry: '打开六箱全景',
+      focusDrillTitle: '六箱全景',
+      focusBackLabel: '回到焦点',
+      focusRemindersHeading: '到期没回',
+      drawerIneligibleHeading: '为什么没进焦点',
       ruleHeading: '规则角标',
       ruleWaitingMissingWho: '等待清单缺「等谁」',
       ruleWaitingMissingWhat: '等待清单缺「等什么」',
@@ -130,8 +162,39 @@ window.__ModuleLoader__.load({
       recordNone: 'No matching record',
       recordUnwritten: 'Not stated',
       recordSource: 'Source',
-      focusHeading: 'This week focus',
-      focusEmpty: 'No deep-work action this week',
+      mainPushHeading: 'This week focus',
+      mainPushEmpty: 'No deep-work action this week',
+      /* v2:focus 焦点视图 */
+      viewCanvasLabel: 'Six boxes',
+      viewFocusLabel: 'Focus view',
+      focusViewPending: 'Focus view not wired yet',
+      focusDailyLabel: 'Daily today',
+      focusDailyUndone: 'open',
+      focusRemainingLabel: 'Remaining schedulable time',
+      focusMinutesUnit: 'min',
+      focusQuotaLabel: 'Deep-work slots',
+      focusCapacityAsOf: 'Capacity parameters set on',
+      focusCapacityAsOfUnset: 'Capacity parameters are not dated (generic defaults in use)',
+      focusCardWorkLabel: 'What to do',
+      focusCardDueLabel: 'Due',
+      focusCardRequirementLabel: 'Done means',
+      focusCardEstimateLabel: 'Estimated time',
+      focusEstimateUnset: 'Not estimated',
+      focusCardOverdue: 'Overdue',
+      focusCapacityFits: 'It fits',
+      focusCapacityNoFit: 'It does not fit',
+      focusCapacityUnknown: 'Time unknown',
+      focusCapacityNoteFits: 'Remaining today: {minutes} min, this takes {estimate} min',
+      focusCapacityNoteNoFits: 'Only {minutes} min left today, this needs {estimate} min',
+      focusNextHeading: 'Next up',
+      focusNextHint: 'click one to make it the main card',
+      focusNextEmpty: 'Nothing else queued',
+      focusCardEmpty: 'Nothing to do right now',
+      focusDrillEntry: 'Open the six-box panorama',
+      focusDrillTitle: 'Six-box panorama',
+      focusBackLabel: 'Back to focus',
+      focusRemindersHeading: 'Overdue replies',
+      drawerIneligibleHeading: 'Why it is not in focus',
       ruleHeading: 'Rule flags',
       ruleWaitingMissingWho: 'Waiting list is missing who',
       ruleWaitingMissingWhat: 'Waiting list is missing what',
@@ -1195,15 +1258,15 @@ window.__ModuleLoader__.load({
      * @param {object} props - props。
      * @returns {object} React 元素或 null。
      */
-    function FocusStrip(props) {
+    function MainPushStrip(props) {
       const t = props.t;
-      const focus = Array.isArray(props.focus) ? props.focus : [];
-      if (focus.length === 0) {
+      const mainPush = Array.isArray(props.mainPush) ? props.mainPush : [];
+      if (mainPush.length === 0) {
         return h(
           'div',
           {
-            className: 'gtd-focus',
-            'data-role': 'focus',
+            className: 'gtd-main-push',
+            'data-role': 'main-push',
             'data-count': '0',
             style: {
               padding: '8px 16px',
@@ -1212,15 +1275,15 @@ window.__ModuleLoader__.load({
               color: 'var(--dsw-alias-label-caption)',
             },
           },
-          `${t('focusHeading')}：${t('focusEmpty')}`,
+          `${t('mainPushHeading')}：${t('mainPushEmpty')}`,
         );
       }
       return h(
         'div',
         {
-          className: 'gtd-focus',
-          'data-role': 'focus',
-          'data-count': String(focus.length),
+          className: 'gtd-main-push',
+          'data-role': 'main-push',
+          'data-count': String(mainPush.length),
           style: {
             display: 'flex',
             alignItems: 'baseline',
@@ -1234,19 +1297,19 @@ window.__ModuleLoader__.load({
         h(
           'strong',
           {
-            'data-role': 'focus-heading',
+            'data-role': 'main-push-heading',
             style: { fontSize: '12px', lineHeight: '18px', color: 'var(--dsw-alias-label-primary)' },
           },
-          `${t('focusHeading')} ${focus.length}`,
+          `${t('mainPushHeading')} ${mainPush.length}`,
         ),
-        ...focus.map((item, index) =>
+        ...mainPush.map((item, index) =>
           h(
             'button',
             {
               key: item.id,
               type: 'button',
-              className: 'gtd-focus__item',
-              'data-role': 'focus-item',
+              className: 'gtd-main-push__item',
+              'data-role': 'main-push-item',
               'data-note-id': item.id,
               'data-order': String(index + 1),
               title: item.dueLocal === null ? item.title : `${item.title}｜${t('dueLabel')} ${item.dueLocal}`,
@@ -1271,12 +1334,12 @@ window.__ModuleLoader__.load({
                 whiteSpace: 'nowrap',
               },
             },
-            h('span', { 'data-role': 'focus-title' }, item.title),
+            h('span', { 'data-role': 'main-push-title' }, item.title),
             item.dueLocal === null
               ? null
               : h(
                   'span',
-                  { 'data-role': 'focus-due', style: { fontSize: '11px', color: 'var(--dsw-alias-label-caption)' } },
+                  { 'data-role': 'main-push-due', style: { fontSize: '11px', color: 'var(--dsw-alias-label-caption)' } },
                   item.dueLocal,
                 ),
           ),
@@ -1714,6 +1777,40 @@ window.__ModuleLoader__.load({
                 ),
               ),
           /* gtd:08 end */
+          /* v2:focus 没进焦点的动作，在抽屉里说清为什么——角标自己不会说话 */
+          typeof note.ineligibleReason === 'string' && note.ineligibleReason.length > 0 && note.eligible !== true
+            ? h(
+                'section',
+                {
+                  className: 'gtd-drawer__ineligible',
+                  'data-role': 'drawer-ineligible',
+                  /* 原因值是 Host 给的稳定契约（`INELIGIBLE_REASONS`），这里原样呈现，不改写。 */
+                  'data-reason': note.ineligibleReason,
+                  style: {
+                    marginTop: '12px',
+                    paddingTop: '10px',
+                    borderTop: '1px solid var(--dsw-alias-border-l2)',
+                  },
+                },
+                h(
+                  'h3',
+                  {
+                    'data-role': 'drawer-ineligible-heading',
+                    style: { margin: '0 0 4px', fontSize: '12px', lineHeight: '18px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
+                  },
+                  t('drawerIneligibleHeading'),
+                ),
+                h(
+                  'p',
+                  {
+                    'data-role': 'drawer-ineligible-reason',
+                    style: { margin: 0, fontSize: '12px', lineHeight: '18px', color: 'var(--dsw-alias-label-secondary)' },
+                  },
+                  note.ineligibleReason,
+                ),
+              )
+            : null,
+          /* v2:focus end */
           /* gtd:06 markdown 侧与滴答侧分区呈现，不混作一段 */
           h(DrawerRecord, { record: recordOf(props.records, note.record), t }),
           /* gtd:06 end */
@@ -1726,13 +1823,13 @@ window.__ModuleLoader__.load({
     /**
      * 视图模式的取值。
      *
-     * `canvas` 是 v1 的六箱画布，`focus` 是 v2 的焦点引导器。
-     * 旧画布仍是**默认**视图——这一层只是把「画哪一个」从取数与刷新里摘出来。
+     * `focus` 是 v2 的焦点引导器（**默认**视图），`canvas` 是 v1 的六箱画布。
+     * 焦点视图自己带一个下钻入口，进去就是六箱画布原样——两个入口通向同一张画布。
      */
     const VIEW_MODE = { CANVAS: 'canvas', FOCUS: 'focus' };
 
-    /** 默认画哪个视图。旧画布是默认。 */
-    const DEFAULT_VIEW_MODE = VIEW_MODE.CANVAS;
+    /** 默认画哪个视图。v2 起默认是焦点引导器（issue #1「工作台 v2」）。 */
+    const DEFAULT_VIEW_MODE = VIEW_MODE.FOCUS;
 
     /**
      * 取一句文案：宿主词表里有就用词表里的，没有就退回这里的默认写法。
@@ -1751,55 +1848,11 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 焦点视图（占位）。
-     *
-     * 这一层**是空的**：资格、排序、容量、写口都是后面的票。
-     * 下一票往 `data-role="focus-view"` 里填内容即可——外壳（取数、加载态、错误态、刷新）一行都不用改。
-     * @param {object} props - props：`snapshot`、`t`、`onReload`。
-     * @returns {object} React 元素。
-     */
-    function FocusView(props) {
-      const t = props.t;
-      return h(
-        'div',
-        {
-          className: 'gtd-focus-view',
-          'data-role': 'focus-view',
-          'data-state': 'placeholder',
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flex: '1 1 auto',
-            minHeight: 0,
-            padding: '24px',
-            background: 'var(--dsw-alias-bg-base)',
-          },
-        },
-        h(
-          'div',
-          {
-            'data-role': 'focus-view-placeholder',
-            style: {
-              padding: '12px 16px',
-              border: '1px dashed var(--dsw-alias-border-l3)',
-              borderRadius: 'var(--dsw-radius-md)',
-              color: 'var(--dsw-alias-label-secondary)',
-              fontSize: '13px',
-              lineHeight: '20px',
-            },
-          },
-          textOf(t, 'focusViewPending', '焦点视图待接入'),
-        ),
-      );
-    }
-
-    /**
      * 六箱画布视图：v1 的版面原样搬过来。
      *
      * **不套任何 DOM 元素**（用 Fragment 返回）：画布这一段的 DOM 层级与拆分前完全一致，
-     * 既有选择器（`[data-role="focus"]`／`[data-role="board"]`／`[data-role="sunk"]`）一条都不用改。
-     * @param {object} props - props：`snapshot`、`t`、`motions`、`onOpenFocus`、`onReload`。
+     * 既有选择器（`[data-role="main-push"]`／`[data-role="board"]`／`[data-role="sunk"]`）一条都不用改。
+     * @param {object} props - props：`snapshot`、`t`、`motions`、`onOpenNote`、`onReload`。
      * @returns {object} React 元素。
      */
     function CanvasView(props) {
@@ -1808,10 +1861,10 @@ window.__ModuleLoader__.load({
       return h(
         React.Fragment,
         null,
-        h(FocusStrip, {
-          focus: snapshot !== null && typeof snapshot === 'object' ? snapshot.focus : [],
+        h(MainPushStrip, {
+          mainPush: snapshot !== null && typeof snapshot === 'object' ? snapshot.mainPush : [],
           t,
-          onOpen: props.onOpenFocus,
+          onOpen: props.onOpenNote,
         }),
         h(WorkbenchBoard, { snapshot, t, motions: props.motions }),
         h(SunkArea, {
@@ -1862,6 +1915,1025 @@ window.__ModuleLoader__.load({
       );
     }
     /* v2:shell end */
+
+    /* v2:focus 焦点引导器（GitHub issue #6「05 · 焦点只读上线」的 Client 侧）
+     *
+     * 四层结构照 `prototype/index.html`（工单 04 的一次性原型，用户已过观感门禁）：
+     *   ① 顶部常驻：今日日清 + 今日剩余可排时间 + 深度名额；
+     *   ② 行动卡（主位）：工作内容、完成时限、完成要求、预计耗时，外加一句容量提示；
+     *   ③「接下来」窄条队列：只写标题与时限，点一条即换主卡；
+     *   ④ 下钻层：点开就是 v1 的六箱画布原样，带一个「回到焦点」。
+     *
+     * **Client 只画不算**（ADR-0010）：资格、排序、容量、可排时间、主卡与队列的内容
+     * 全部由 Host 算好随快照过界（`focus.card` / `focus.next` / `today.*` / `capacity.*`），
+     * 这一层只负责把它们摆成原型那个样子。换主卡与下钻都是**纯视图状态**，不写任何数据。
+     */
+
+    /**
+     * 快照缺失时的兜底对象（模块级常量，身份恒定）。
+     */
+    const EMPTY_SNAPSHOT = {};
+
+    /**
+     * 取一个分钟数：只认数字，负数按 0 算（界面上不显示负的剩余时间）。
+     * @param {unknown} value - 候选值。
+     * @returns {number} 分钟数；不是数字时为 0。
+     */
+    function minutesOf(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+      return Math.max(0, Math.floor(value));
+    }
+
+    /**
+     * 把模板里的占位符换成取值（词表里的句子带 `{minutes}` 这样的占位）。
+     * @param {string} template - 模板。
+     * @param {Record<string, string | number>} values - 占位符取值。
+     * @returns {string} 填好的句子。
+     */
+    function fillTemplate(template, values) {
+      let text = String(template);
+      for (const key of Object.keys(values)) {
+        text = text.split(`{${key}}`).join(String(values[key]));
+      }
+      return text;
+    }
+
+    /**
+     * 顶部常驻：今日日清状态、今日剩余可排时间、深度名额。
+     *
+     * 三个数一直亮在背景上，但不抢主位（issue #1 第一层）。用户已拍板「保持原型里的分量」，
+     * 所以字号与对比都照原型：标签 11px、值 19px 粗体、等宽数字。
+     * @param {object} props - props：`today`、`capacity`、`t`。
+     * @returns {object} React 元素。
+     */
+    function FocusTopBar(props) {
+      const t = props.t;
+      const today = props.today !== null && typeof props.today === 'object' ? props.today : {};
+      const capacity = props.capacity !== null && typeof props.capacity === 'object' ? props.capacity : {};
+      const daily = Array.isArray(today.daily) ? today.daily : [];
+      // 已还清的是勾掉的那几笔；其余都算还欠着。
+      const cleared = daily.filter(
+        (row) => row !== null && typeof row === 'object' && row.state === '已还清',
+      ).length;
+      const open = Math.max(0, daily.length - cleared);
+      const remaining = minutesOf(today.remainingMinutes);
+      const quotaTotal =
+        typeof capacity.deepQuota === 'number' && Number.isFinite(capacity.deepQuota)
+          ? capacity.deepQuota
+          : 1;
+      const quotaUsed = today.deepQuotaUsed === true ? 1 : 0;
+
+      /**
+       * 一个数位。
+       * @param {string} key - 数位键。
+       * @param {string} label - 标签文案。
+       * @param {string | number} value - 主数值。
+       * @param {string | null} unit - 单位（没有单位就是 null）。
+       * @param {object} extra - 数值上的额外标记（给测试与眼睛看真值）。
+       * @param {boolean} first - 是不是第一个（第一个不画左分隔线）。
+       * @returns {object} React 元素。
+       */
+      const stat = (key, label, value, unit, extra, first) =>
+        h(
+          'div',
+          {
+            className: 'gtd-focus-top__stat',
+            'data-role': 'focus-stat',
+            'data-stat': key,
+            style: {
+              flex: '1 1 0',
+              minWidth: 0,
+              padding: first ? '0 10px 0 0' : '0 10px',
+              borderLeft: first ? 'none' : '1px solid var(--dsw-alias-border-l2)',
+            },
+          },
+          h(
+            'span',
+            {
+              'data-role': 'focus-stat-label',
+              style: {
+                display: 'block',
+                fontSize: '11px',
+                lineHeight: '15px',
+                color: 'var(--dsw-alias-label-caption)',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              },
+            },
+            label,
+          ),
+          h(
+            'span',
+            {
+              className: 'gtd-focus-top__value',
+              'data-role': 'focus-stat-value',
+              'data-stat': key,
+              ...extra,
+              style: {
+                display: 'block',
+                marginTop: '1px',
+                fontSize: '19px',
+                lineHeight: '24px',
+                fontWeight: 650,
+                color: 'var(--dsw-alias-label-primary)',
+                fontVariantNumeric: 'tabular-nums',
+              },
+            },
+            value,
+            unit === null
+              ? null
+              : h(
+                  'small',
+                  {
+                    style: {
+                      fontSize: '11px',
+                      fontWeight: 500,
+                      color: 'var(--dsw-alias-label-caption)',
+                      marginLeft: '2px',
+                    },
+                  },
+                  unit,
+                ),
+          ),
+        );
+
+      return h(
+        'header',
+        {
+          className: 'gtd-focus-top',
+          'data-role': 'focus-top',
+          style: {
+            display: 'flex',
+            alignItems: 'stretch',
+            gap: 0,
+            padding: '12px 16px 10px',
+            borderBottom: '1px solid var(--dsw-alias-border-l2)',
+            background: 'var(--dsw-alias-bg-module-platform)',
+          },
+        },
+        stat(
+          'daily',
+          t('focusDailyLabel'),
+          open,
+          `/${daily.length} ${t('focusDailyUndone')}`,
+          { 'data-open': String(open), 'data-total': String(daily.length) },
+          true,
+        ),
+        stat(
+          'remaining',
+          t('focusRemainingLabel'),
+          remaining,
+          t('focusMinutesUnit'),
+          { 'data-minutes': String(remaining) },
+          false,
+        ),
+        stat(
+          'deep-quota',
+          t('focusQuotaLabel'),
+          `${quotaUsed}/${quotaTotal}`,
+          null,
+          { 'data-used': String(quotaUsed), 'data-total': String(quotaTotal) },
+          false,
+        ),
+      );
+    }
+
+    /**
+     * 提醒位：等待清单里「到期没回」的那些。
+     *
+     * 它**不占主卡**（ADR-0010 第三条）：等待清单永远不占主位，只在这里冒一声。
+     * @param {object} props - props：`reminders`、`t`。
+     * @returns {object} React 元素或 null。
+     */
+    function FocusReminders(props) {
+      const t = props.t;
+      const reminders = Array.isArray(props.reminders) ? props.reminders : [];
+      if (reminders.length === 0) return null;
+      return h(
+        'section',
+        {
+          className: 'gtd-focus-reminders',
+          'data-role': 'focus-reminders',
+          'data-count': String(reminders.length),
+          style: {
+            padding: '10px 16px',
+            borderBottom: '1px solid var(--dsw-alias-border-l2)',
+            background: 'var(--dsw-alias-bg-module-platform)',
+          },
+        },
+        h(
+          'h3',
+          {
+            'data-role': 'focus-reminders-heading',
+            style: {
+              margin: '0 0 6px',
+              fontSize: '11px',
+              lineHeight: '16px',
+              fontWeight: 600,
+              letterSpacing: '0.04em',
+              color: 'var(--dsw-alias-label-caption)',
+            },
+          },
+          t('focusRemindersHeading'),
+        ),
+        h(
+          'ul',
+          {
+            style: {
+              margin: 0,
+              padding: 0,
+              listStyle: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px',
+            },
+          },
+          reminders.map((item) =>
+            h(
+              'li',
+              {
+                key: item.id,
+                'data-role': 'focus-reminder',
+                'data-note-ref': item.id,
+                style: { display: 'flex', alignItems: 'baseline', gap: '8px' },
+              },
+              h(
+                'span',
+                {
+                  'data-role': 'focus-reminder-title',
+                  style: { fontSize: '12px', lineHeight: '18px', color: 'var(--dsw-alias-label-primary)' },
+                },
+                item.title,
+              ),
+              typeof item.replyDue === 'string' && item.replyDue.length > 0
+                ? h(
+                    'span',
+                    {
+                      'data-role': 'focus-reminder-due',
+                      style: {
+                        fontSize: '11px',
+                        lineHeight: '16px',
+                        color: 'var(--dsw-alias-label-caption)',
+                        fontVariantNumeric: 'tabular-nums',
+                      },
+                    },
+                    item.replyDue,
+                  )
+                : null,
+            ),
+          ),
+        ),
+      );
+    }
+
+    /**
+     * 行动卡（主位）：一条动作在工作台上的呈现。
+     *
+     * 卡上写的是那条动作自己的内容（GLOSSARY「行动卡」），**不新造一个卡对象**。
+     * 四样必备里缺哪一样，就**少一行**——整卡永远在，不能因为字段缺了就什么都不显示。
+     * @param {object} props - props：`card`、`t`、`onOpenNote`。
+     * @returns {object} React 元素。
+     */
+    function FocusActionCard(props) {
+      const t = props.t;
+      const card = props.card;
+      if (card === null || typeof card !== 'object') {
+        return h(
+          'p',
+          {
+            'data-role': 'focus-card-empty',
+            style: { margin: 0, fontSize: '13px', lineHeight: '20px', color: 'var(--dsw-alias-label-caption)' },
+          },
+          t('focusCardEmpty'),
+        );
+      }
+      const requirement = card.requirement !== null && typeof card.requirement === 'object' ? card.requirement : {};
+      const requirementText =
+        typeof requirement.text === 'string' && requirement.text.length > 0 ? requirement.text : null;
+      const requirementSource =
+        typeof requirement.source === 'string' && requirement.source.length > 0 ? requirement.source : null;
+      // 未估算是 `null`，不是 0 分钟（README「预计耗时」）。
+      const estimate =
+        typeof card.estimateMinutes === 'number' && Number.isFinite(card.estimateMinutes)
+          ? card.estimateMinutes
+          : null;
+      const hint = card.capacityHint !== null && typeof card.capacityHint === 'object' ? card.capacityHint : null;
+      const band = typeof card.timeBand === 'string' && card.timeBand.length > 0 ? card.timeBand : null;
+      const dueText = typeof card.dueLocal === 'string' && card.dueLocal.length > 0 ? card.dueLocal : '—';
+
+      /**
+       * 卡上的一行（标签 + 值）。
+       * @param {string} key - 行键（也当 data-role 用）。
+       * @param {string} label - 标签文案。
+       * @param {object} value - 值（React 节点）。
+       * @returns {object} React 元素。
+       */
+      const fact = (key, label, value) =>
+        h(
+          'div',
+          {
+            'data-role': 'focus-card-fact',
+            'data-fact': key,
+            style: {
+              display: 'grid',
+              gridTemplateColumns: '64px 1fr',
+              gap: '10px',
+              alignItems: 'baseline',
+            },
+          },
+          h(
+            'span',
+            {
+              'data-role': 'focus-card-fact-label',
+              style: { fontSize: '11px', lineHeight: '17px', color: 'var(--dsw-alias-label-caption)' },
+            },
+            label,
+          ),
+          h(
+            'span',
+            {
+              'data-role': `focus-card-${key}`,
+              style: { fontSize: '13.5px', lineHeight: '20px', color: 'var(--dsw-alias-label-primary)' },
+            },
+            value,
+          ),
+        );
+
+      /** 容量提示：装不装得下由 Host 说了算（`capacityHint.fits`），这里只把它画出来。 */
+      const capacityBlock =
+        hint === null
+          ? null
+          : (() => {
+              const fits = hint.fits === true ? true : hint.fits === false ? false : null;
+              const remaining = minutesOf(hint.remainingMinutes);
+              const state =
+                fits === true
+                  ? t('focusCapacityFits')
+                  : fits === false
+                    ? t('focusCapacityNoFit')
+                    : t('focusCapacityUnknown');
+              const note =
+                estimate === null
+                  ? null
+                  : fillTemplate(
+                      fits === false ? t('focusCapacityNoteNoFits') : t('focusCapacityNoteFits'),
+                      { minutes: remaining, estimate },
+                    );
+              const ratio =
+                estimate === null || remaining <= 0
+                  ? null
+                  : Math.max(4, Math.min(100, Math.round((estimate / remaining) * 100)));
+              return h(
+                'div',
+                {
+                  className: 'gtd-focus-card__capacity',
+                  'data-role': 'focus-card-capacity',
+                  'data-state': fits === true ? 'fits' : fits === false ? 'no' : 'unknown',
+                  style: {
+                    marginTop: '14px',
+                    padding: '10px 12px',
+                    border: '1px solid var(--dsw-alias-border-l2)',
+                    borderRadius: 'var(--dsw-radius-md)',
+                    background: 'var(--dsw-alias-bg-module-platform)',
+                  },
+                },
+                h(
+                  'div',
+                  {
+                    style: {
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      gap: '8px',
+                      fontSize: '13px',
+                      lineHeight: '19px',
+                      color: 'var(--dsw-alias-label-primary)',
+                    },
+                  },
+                  h(
+                    'span',
+                    {
+                      'data-role': 'focus-card-capacity-state',
+                      style: { fontWeight: 650 },
+                    },
+                    state,
+                  ),
+                  note === null
+                    ? null
+                    : h(
+                        'span',
+                        {
+                          'data-role': 'focus-card-capacity-note',
+                          style: { fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                        },
+                        note,
+                      ),
+                ),
+                ratio === null
+                  ? null
+                  : h(
+                      'div',
+                      {
+                        'data-role': 'focus-card-capacity-meter',
+                        style: {
+                          position: 'relative',
+                          height: '6px',
+                          marginTop: '8px',
+                          borderRadius: '999px',
+                          background: 'var(--dsw-alias-border-l2)',
+                          overflow: 'hidden',
+                        },
+                      },
+                      h('span', {
+                        'data-role': 'focus-card-capacity-fill',
+                        style: {
+                          position: 'absolute',
+                          top: 0,
+                          bottom: 0,
+                          left: 0,
+                          width: `${ratio}%`,
+                          borderRadius: '999px',
+                          background: 'var(--dsw-alias-label-tertiary)',
+                        },
+                      }),
+                    ),
+              );
+            })();
+
+      return h(
+        'article',
+        {
+          className: 'gtd-focus-card',
+          'data-role': 'focus-card',
+          'data-note-ref': card.id,
+          'data-band': band === null ? '' : band,
+          style: {
+            position: 'relative',
+            padding: '20px 18px 16px',
+            border: '1px solid var(--dsw-alias-border-l3)',
+            borderRadius: 'var(--dsw-radius-xl)',
+            background: 'var(--dsw-alias-bg-base)',
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.10)',
+            overflow: 'hidden',
+          },
+        },
+        /* v2:focus 主卡「弱化纸感」：没有折角、也没有纸纹，只留纸色调与一层浅影。
+           下钻层里的 v1 纸箱与便贴照旧保留原来的纸感（`gtd-box__fold` 与 `.gtd-box::after`）。 */
+        band === null
+          ? null
+          : h(
+              'span',
+              {
+                className: 'gtd-focus-card__band',
+                'data-role': 'focus-card-band',
+                'data-band': band,
+                /* 时间档色是 artwork：底是固定色相，字就得是固定的浅色——
+                   跟着主题翻色反而在深蓝／深绿底上读不清（与便贴上的时间档标签同一套做法）。 */
+                style: {
+                  display: 'inline-block',
+                  padding: '1px 7px',
+                  borderRadius: '999px',
+                  fontSize: '11px',
+                  lineHeight: '17px',
+                  fontWeight: 600,
+                  color: '#ffffff',
+                  background: BAND_COLORS[band] ?? 'var(--dsw-alias-label-tertiary)',
+                },
+              },
+              band,
+            ),
+        h(
+          'h2',
+          {
+            className: 'gtd-focus-card__title',
+            'data-role': 'focus-card-title',
+            'data-fact': 'work',
+            style: {
+              margin: '10px 0 0',
+              fontSize: '23px',
+              lineHeight: '1.35',
+              fontWeight: 700,
+              letterSpacing: '0.01em',
+            },
+          },
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-role': 'focus-card-open',
+              /* 这一段大字就是「工作内容」（四要素之一）：说给读屏的人听。 */
+              'aria-label': `${t('focusCardWorkLabel')} ${card.title}`,
+              onClick: () => {
+                if (typeof props.onOpenNote === 'function') props.onOpenNote(card);
+              },
+              style: {
+                display: 'block',
+                width: '100%',
+                margin: 0,
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--dsw-alias-label-primary)',
+                font: 'inherit',
+                textAlign: 'left',
+                cursor: 'pointer',
+              },
+            },
+            card.title,
+          ),
+        ),
+        h(
+          'dl',
+          {
+            'data-role': 'focus-card-facts',
+            style: { margin: '14px 0 0', display: 'grid', gap: '10px' },
+          },
+          fact(
+            'due',
+            t('focusCardDueLabel'),
+            h(
+              React.Fragment,
+              null,
+              dueText,
+              card.overdue === true
+                ? h(
+                    'span',
+                    {
+                      'data-role': 'focus-card-overdue',
+                      style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' },
+                    },
+                    t('focusCardOverdue'),
+                  )
+                : null,
+            ),
+          ),
+          /* 完成要求缺失 → 这一行不画；整卡不受影响。 */
+          requirementText === null
+            ? null
+            : fact(
+                'requirement',
+                t('focusCardRequirementLabel'),
+                h(
+                  React.Fragment,
+                  null,
+                  requirementText,
+                  requirementSource === null
+                    ? null
+                    : h(
+                        'span',
+                        {
+                          'data-role': 'focus-card-requirement-source',
+                          style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                        },
+                        requirementSource,
+                      ),
+                ),
+              ),
+          fact(
+            'estimate',
+            t('focusCardEstimateLabel'),
+            estimate === null
+              ? h('span', { 'data-role': 'focus-card-estimate-unset' }, t('focusEstimateUnset'))
+              : `${estimate} ${t('focusMinutesUnit')}`,
+          ),
+        ),
+        capacityBlock,
+      );
+    }
+
+    /**
+     * 「接下来」窄条队列：只写标题与时限。
+     *
+     * 窄、密、安静。点一条就把它换成主卡——这是**纯视图状态**，不写任何数据。
+     * @param {object} props - props：`items`、`t`、`onPick`。
+     * @returns {object} React 元素。
+     */
+    function FocusNextQueue(props) {
+      const t = props.t;
+      const items = Array.isArray(props.items) ? props.items : [];
+      return h(
+        'section',
+        {
+          className: 'gtd-focus-next',
+          'data-role': 'focus-next',
+          'data-count': String(items.length),
+          style: { display: 'flex', flexDirection: 'column', gap: '6px' },
+        },
+        h(
+          'div',
+          {
+            'data-role': 'focus-next-head',
+            style: {
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: '8px',
+              fontSize: '11px',
+              lineHeight: '16px',
+              color: 'var(--dsw-alias-label-caption)',
+            },
+          },
+          h('span', { 'data-role': 'focus-next-heading' }, t('focusNextHeading')),
+          h(
+            'span',
+            { 'data-role': 'focus-next-count' },
+            `${items.length} ${t('countUnit')} · ${t('focusNextHint')}`,
+          ),
+        ),
+        items.length === 0
+          ? h(
+              'p',
+              {
+                'data-role': 'focus-next-empty',
+                style: { margin: 0, fontSize: '12px', color: 'var(--dsw-alias-label-caption)' },
+              },
+              t('focusNextEmpty'),
+            )
+          : items.map((item, index) => {
+              const band = typeof item.timeBand === 'string' && item.timeBand.length > 0 ? item.timeBand : null;
+              const due = typeof item.dueLocal === 'string' && item.dueLocal.length > 0 ? item.dueLocal : '—';
+              return h(
+                'button',
+                {
+                  key: item.id,
+                  type: 'button',
+                  className: 'gtd-focus-next__item',
+                  'data-role': 'focus-next-item',
+                  'data-note-ref': item.id,
+                  'data-band': band === null ? '' : band,
+                  'data-order': String(index + 1),
+                  title: `${item.title}｜${t('focusNextHint')}`,
+                  onClick: () => props.onPick(item),
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    width: '100%',
+                    padding: '7px 10px',
+                    border: '1px solid var(--dsw-alias-border-l2)',
+                    borderLeft: `4px solid ${band === null ? 'var(--dsw-alias-border-l3)' : BAND_COLORS[band]}`,
+                    borderRadius: 'var(--dsw-radius-md)',
+                    background: 'var(--dsw-alias-bg-module-platform)',
+                    color: 'var(--dsw-alias-label-secondary)',
+                    font: 'inherit',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  },
+                },
+                h(
+                  'span',
+                  {
+                    'data-role': 'focus-next-title',
+                    style: {
+                      flex: '1 1 auto',
+                      minWidth: 0,
+                      fontSize: '13px',
+                      lineHeight: '19px',
+                      color: 'var(--dsw-alias-label-primary)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    },
+                  },
+                  item.title,
+                ),
+                h(
+                  'span',
+                  {
+                    'data-role': 'focus-next-due',
+                    style: {
+                      flex: '0 0 auto',
+                      fontSize: '11px',
+                      lineHeight: '16px',
+                      color: 'var(--dsw-alias-label-caption)',
+                      fontVariantNumeric: 'tabular-nums',
+                    },
+                  },
+                  due,
+                ),
+              );
+            }),
+      );
+    }
+
+    /**
+     * 下钻层：六箱全景，覆盖焦点区主位。
+     *
+     * 画布是 v1 的原样（纸箱、便贴、箱签、已沉底、规则角标全在），
+     * 只是退到幕后——全景还在，只是不占主位。
+     * @param {object} props - props：`open`、`snapshot`、`t`、`motions`、`onOpenNote`、`onClose`。
+     * @returns {object} React 元素。
+     */
+    function FocusDrill(props) {
+      const t = props.t;
+      const open = props.open === true;
+      return h(
+        'section',
+        {
+          className: 'gtd-focus-drill',
+          'data-role': 'focus-drill',
+          'data-state': open ? 'open' : 'closed',
+          hidden: !open,
+          'aria-label': t('focusDrillTitle'),
+          style: {
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            zIndex: 5,
+            display: open ? 'flex' : 'none',
+            flexDirection: 'column',
+            background: 'var(--dsw-alias-bg-base)',
+            overflowY: 'auto',
+          },
+        },
+        h(
+          'header',
+          {
+            'data-role': 'focus-drill-head',
+            style: {
+              position: 'sticky',
+              top: 0,
+              zIndex: 2,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--dsw-alias-border-l2)',
+              background: 'var(--dsw-alias-bg-module-platform)',
+            },
+          },
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-role': 'focus-back',
+              'data-context': 'drill',
+              onClick: props.onClose,
+              style: {
+                padding: '4px 10px',
+                border: '1px solid var(--dsw-alias-border-l3)',
+                borderRadius: 'var(--dsw-radius-md)',
+                background: 'var(--dsw-alias-bg-base)',
+                color: 'var(--dsw-alias-label-secondary)',
+                font: 'inherit',
+                fontSize: '12px',
+                lineHeight: '19px',
+                cursor: 'pointer',
+              },
+            },
+            `← ${t('focusBackLabel')}`,
+          ),
+          h(
+            'h2',
+            {
+              'data-role': 'focus-drill-title',
+              style: {
+                margin: 0,
+                fontSize: '14px',
+                lineHeight: '20px',
+                fontWeight: 600,
+                color: 'var(--dsw-alias-label-primary)',
+              },
+            },
+            t('focusDrillTitle'),
+          ),
+        ),
+        h(
+          'div',
+          { 'data-role': 'focus-drill-body' },
+          h(CanvasView, {
+            snapshot: props.snapshot,
+            t,
+            motions: props.motions,
+            onOpenNote: props.onOpenNote,
+          }),
+        ),
+      );
+    }
+
+    /**
+     * 把一条「接下来」窄条升成主卡。
+     *
+     * 窄条上只有标题与时限，所以升上来的卡**只有工作内容与完成时限**——
+     * 完成要求与预计耗时缺了就少一行（这是降级，不是整卡消失）。
+     * @param {object} item - 窄条。
+     * @param {object} capacity - 快照里的容量（剩余时间的出处）。
+     * @returns {object} 行动卡形状的对象。
+     */
+    function asFocusCard(item, capacity) {
+      if (item !== null && typeof item === 'object' && item.capacityHint !== undefined) return item;
+      const source = capacity !== null && typeof capacity === 'object' ? capacity : {};
+      return {
+        id: item.id,
+        title: item.title,
+        container: item.container ?? null,
+        containerName: item.containerName ?? null,
+        timeBand: item.timeBand ?? null,
+        dueLocal: item.dueLocal ?? null,
+        dueDate: item.dueDate ?? null,
+        dueTime: item.dueTime ?? null,
+        dueAllDay: item.dueAllDay === true,
+        overdue: item.overdue === true,
+        record: item.record ?? null,
+        requirement: { text: null, source: null },
+        estimateMinutes: null,
+        estimateSource: null,
+        capacityHint: {
+          fits: null,
+          remainingMinutes: minutesOf(source.remainingMinutes),
+          schedulableMinutes: minutesOf(source.schedulableMinutes),
+        },
+      };
+    }
+
+    /**
+     * 焦点视图（v2 的默认视图）：四层结构。
+     *
+     * ① 顶部常驻 → ② 行动卡（主位）→ ③「接下来」窄条 → ④ 下钻入口（进去是六箱画布）。
+     * 换主卡与下钻都是**视图内状态**，不写任何数据（工作台是只读视图，ADR-0006）。
+     * @param {object} props - props：`snapshot`、`t`、`motions`、`onOpenNote`、`onReload`。
+     * @returns {object} React 元素。
+     */
+    function FocusView(props) {
+      const t = props.t;
+      /* 兜底对象是模块级的常量：每次渲染新建一个会让下面的复位 effect 反复触发。 */
+      const snapshot =
+        props.snapshot !== null && typeof props.snapshot === 'object' ? props.snapshot : EMPTY_SNAPSHOT;
+      const focus =
+        snapshot.focus !== null && typeof snapshot.focus === 'object' && !Array.isArray(snapshot.focus)
+          ? snapshot.focus
+          : null;
+      const today = snapshot.today !== null && typeof snapshot.today === 'object' ? snapshot.today : {};
+      const capacity =
+        snapshot.capacity !== null && typeof snapshot.capacity === 'object' ? snapshot.capacity : {};
+
+      /* 视图内状态：换过的主卡与队列、下钻开关。刷新换快照时一并复位。 */
+      const [override, setOverride] = React.useState(null);
+      const [drilled, setDrilled] = React.useState(false);
+      React.useEffect(() => {
+        setOverride(null);
+        setDrilled(false);
+      }, [snapshot]);
+
+      const baseCard = focus !== null && focus.card !== null && typeof focus.card === 'object' ? focus.card : null;
+      const baseNext = focus !== null && Array.isArray(focus.next) ? focus.next : [];
+      const card = override !== null ? override.card : baseCard;
+      const queue = override !== null ? override.queue : baseNext;
+
+      /**
+       * 点一条窄条：把它换成主卡，原来的主卡回到队列最前面。
+       * @param {object} item - 被点的那条窄条。
+       */
+      const pickFromQueue = (item) => {
+        const rest = queue.filter((entry) => entry.id !== item.id);
+        setOverride({
+          card: asFocusCard(item, capacity),
+          queue: card === null ? rest : [card, ...rest],
+        });
+      };
+
+      const asOfText =
+        typeof capacity.asOf === 'string' && capacity.asOf.length > 0
+          ? `${t('focusCapacityAsOf')} ${capacity.asOf}`
+          : t('focusCapacityAsOfUnset');
+
+      return h(
+        'div',
+        {
+          className: 'gtd-focus-view',
+          'data-role': 'focus-view',
+          'data-state': focus === null ? 'pending' : 'ready',
+          style: {
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            flex: '1 1 auto',
+            minHeight: 0,
+            overflow: 'hidden',
+            background: 'var(--dsw-alias-bg-base)',
+          },
+        },
+        /* ① 顶部常驻（与焦点契约无关，快照老到没有 focus 也照样显示） */
+        h(FocusTopBar, { today, capacity, t }),
+        h(
+          'div',
+          {
+            'data-role': 'focus-capacity-asof',
+            style: {
+              padding: '10px 16px 8px',
+              fontSize: '11px',
+              lineHeight: '16px',
+              color: 'var(--dsw-alias-label-caption)',
+              background: 'var(--dsw-alias-bg-module-platform)',
+              borderBottom: '1px solid var(--dsw-alias-border-l2)',
+            },
+          },
+          asOfText,
+        ),
+        h(FocusReminders, {
+          reminders: focus !== null && Array.isArray(focus.reminders) ? focus.reminders : [],
+          t,
+        }),
+        h(
+          'div',
+          {
+            className: 'gtd-focus-stage',
+            'data-role': 'focus-stage',
+            style: {
+              position: 'relative',
+              flex: '1 1 auto',
+              minHeight: '320px',
+              overflow: 'auto',
+            },
+          },
+          /* ② 行动卡 + ③「接下来」+ ④ 下钻入口 */
+          h(
+            'div',
+            {
+              className: 'gtd-focus-body',
+              'data-role': 'focus-body',
+              hidden: drilled,
+              style: {
+                display: drilled ? 'none' : 'flex',
+                flexDirection: 'column',
+                gap: '18px',
+                padding: '16px 16px 20px',
+              },
+            },
+            focus === null
+              ? h(
+                  'div',
+                  {
+                    'data-role': 'focus-view-pending',
+                    style: {
+                      padding: '12px 16px',
+                      border: '1px dashed var(--dsw-alias-border-l3)',
+                      borderRadius: 'var(--dsw-radius-md)',
+                      color: 'var(--dsw-alias-label-secondary)',
+                      fontSize: '13px',
+                      lineHeight: '20px',
+                    },
+                  },
+                  t('focusViewPending'),
+                )
+              : h(
+                  React.Fragment,
+                  null,
+                  h(FocusActionCard, { card, t, onOpenNote: props.onOpenNote }),
+                  h(FocusNextQueue, { items: queue, t, onPick: pickFromQueue }),
+                ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'gtd-focus-drill-entry',
+                'data-role': 'focus-drill-entry',
+                onClick: () => setDrilled(true),
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  width: '100%',
+                  padding: '10px 12px',
+                  border: '1px dashed var(--dsw-alias-border-l3)',
+                  borderRadius: 'var(--dsw-radius-md)',
+                  background: 'transparent',
+                  color: 'var(--dsw-alias-label-secondary)',
+                  font: 'inherit',
+                  fontSize: '12.5px',
+                  lineHeight: '19px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                },
+              },
+              h('span', { 'data-role': 'focus-drill-entry-label' }, t('focusDrillEntry')),
+              h(
+                'span',
+                {
+                  'data-role': 'focus-drill-entry-chev',
+                  'aria-hidden': 'true',
+                  style: { marginLeft: 'auto', color: 'var(--dsw-alias-label-caption)' },
+                },
+                '▾',
+              ),
+            ),
+          ),
+          /* ④ 下钻层：六箱全景原样（点开才画——下钻层默认不可见） */
+          drilled
+            ? h(FocusDrill, {
+                open: drilled,
+                snapshot,
+                t,
+                motions: props.motions,
+                onOpenNote: props.onOpenNote,
+                onClose: () => setDrilled(false),
+              })
+            : null,
+        ),
+      );
+    }
+    /* v2:focus end */
 
     /**
      * 主区面板（**外壳**）：打开就拉一次数，另配一个手动刷新按钮。
@@ -1922,7 +2994,7 @@ window.__ModuleLoader__.load({
       const closeDrawer = React.useCallback(() => setOpenedNote(null), []);
       /* gtd:05 end */
       /* gtd:04 点主攻带上的条目，开的就是那条便贴的抽屉 */
-      const openFromFocus = React.useCallback(
+      const openNoteById = React.useCallback(
         (item) => {
           const containers = state.snapshot !== null && typeof state.snapshot === 'object' ? state.snapshot.containers : null;
           const notes = Array.isArray(containers) ? containers.flatMap((container) => (Array.isArray(container.notes) ? container.notes : [])) : [];
@@ -1932,8 +3004,12 @@ window.__ModuleLoader__.load({
         [state.snapshot],
       );
       /* gtd:04 end */
-      /* v2:shell 当前画哪一个视图：状态住在外壳里，视图自己不决定 */
-      const [viewMode, setViewMode] = React.useState(DEFAULT_VIEW_MODE);
+      /* v2:shell 当前画哪一个视图：状态住在外壳里，视图自己不决定。
+         `initialView` 可以把初始视图定成画布（默认是焦点引导器）——
+         焦点视图里那个下钻入口通向的是同一张画布。 */
+      const [viewMode, setViewMode] = React.useState(
+        props.initialView === VIEW_MODE.CANVAS ? VIEW_MODE.CANVAS : DEFAULT_VIEW_MODE,
+      );
       const ViewComponent = viewMode === VIEW_MODE.FOCUS ? FocusView : CanvasView;
       /* v2:shell end */
       if (state.status === 'loading') {
@@ -2001,7 +3077,7 @@ window.__ModuleLoader__.load({
             snapshot: state.snapshot,
             t,
             motions,
-            onOpenFocus: openFromFocus,
+            onOpenNote: openNoteById,
             /* 外壳把刷新也递下去：视图要用（写口写完要重画）时自己叫，不用去碰取数 */
             onReload: load,
           }),
@@ -2067,6 +3143,10 @@ window.__ModuleLoader__.load({
 .gtd-note[data-motion="rescheduled"] { animation: gtd-flash 760ms ease-in-out both; }
 .gtd-note[data-motion="moved"] { animation: gtd-fly 620ms ease-out both; }
 .gtd-note[data-dragging="true"] { transition: none; cursor: grabbing; }
+/* v2:focus 焦点视图：窄条与下钻入口的悬停反馈（动效仍走减少动效偏好那一段） */
+.gtd-focus-next__item:hover { border-color: var(--dsw-alias-border-l3); }
+.gtd-focus-card__title button:hover { text-decoration: underline; }
+.gtd-focus-drill-entry:hover { border-color: var(--dsw-alias-label-tertiary); color: var(--dsw-alias-label-primary); }
 @media (prefers-reduced-motion: reduce) {
   .gtd-workbench *,
   .gtd-workbench *::before,

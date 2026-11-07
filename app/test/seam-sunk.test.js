@@ -157,7 +157,7 @@ test('接缝 A：已完成取数失败时不打掉板子——已沉底空着，
 test('接缝 B：画布上有已沉底区，条目按完成日堆叠', async () => {
   const { handler } = routeUnderTest();
   const snapshot = await snapshotOf(handler);
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const sunk = env.document.querySelector('[data-role="sunk"]');
     assert.ok(sunk, '画布上没有已沉底区');
@@ -179,7 +179,7 @@ test('接缝 B：画布上有已沉底区，条目按完成日堆叠', async () 
 test('接缝 B：每个纸箱角标显示该容器的完成数', async () => {
   const { handler } = routeUnderTest();
   const snapshot = await snapshotOf(handler);
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const badges = [...env.document.querySelectorAll('[data-role="box-completions"]')];
     assert.equal(badges.length, 6);
@@ -200,7 +200,7 @@ test('接缝 B：每个纸箱角标显示该容器的完成数', async () => {
 test('接缝 B：已沉底区不提供任何删除或归还动作', async () => {
   const { handler } = routeUnderTest();
   const snapshot = await snapshotOf(handler);
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const sunk = env.document.querySelector('[data-role="sunk"]');
     // 一个按钮都没有：已沉底是展示区，不是回收箱（ADR-0004）。
@@ -220,7 +220,7 @@ test('接缝 B：已沉底区不提供任何删除或归还动作', async () => 
 test('接缝 B：没有完成条目时已沉底区说「最近七天没有完成的事」', async () => {
   const { handler } = routeUnderTest({ runCompleted: async () => [] });
   const snapshot = await snapshotOf(handler);
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const sunk = env.document.querySelector('[data-role="sunk"]');
     assert.ok(sunk, '没有完成条目时已沉底区整个消失了');

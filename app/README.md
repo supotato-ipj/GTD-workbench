@@ -118,13 +118,60 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 |---|---|---|
 | **外壳** | `WorkbenchPanel` | 取数、加载态、错误态、刷新、当前画哪一个视图。**它自己不画画布。** |
 | **视图** | `CanvasView` | v1 的六箱画布（纸箱、便贴、箱签、已沉底、规则角标、本周主攻带）——原样下沉，不重写 |
-| **视图** | `FocusView` | 焦点引导器。**这一票只是占位**（`data-role="focus-view"` 里写着「焦点视图待接入」） |
+| **视图** | `FocusView` | 焦点引导器（issue #6「05 · 焦点只读上线」）：四层结构，默认视图 |
 
 - 视图只收 `snapshot` 与几个回调，**加新视图不用动取数、错误处理与刷新**。
 - 视图切换的状态住在外壳里（`viewMode`），摆在面板根上：`data-role="panel"` 的 `data-view="canvas|focus"`。
   切换控件是 `data-role="view-switch"` 里的两个按钮（`view-switch-canvas`／`view-switch-focus`）。
-- **旧画布仍是默认视图**（`data-view="canvas"`）。画布那一段的 DOM 层级与拆分前完全一样——
-  视图层用 Fragment 返回，不套任何新元素，既有选择器（`[data-role="board"]` 等）一条都不用改。
+- **默认视图是焦点引导器**（`data-view="focus"`）。想直接看画布可以切到 `view-switch-canvas`，
+  也可以在焦点视图里点下钻入口（那条路走的是同一张画布）。
+  外壳接受一个可选的 `initialView`（`'canvas'`）把初始视图定成画布——测试与深链用。
+- 画布那一段的 DOM 层级与拆分前完全一样——视图层用 Fragment 返回，不套任何新元素，
+  既有选择器（`[data-role="board"]` 等）一条都不用改。
+
+## 焦点视图（四层）
+
+`FocusView` 照 `prototype/index.html`（工单 04 的一次性原型，用户已过观感门禁）的四层：
+
+| 层 | DOM 角色 | 内容 |
+|---|---|---|
+| ① 顶部常驻 | `focus-top` / `focus-stat`（`data-stat="daily｜remaining｜deep-quota"`） | 今日日清几笔未还、今日剩余可排时间、深度名额；下面一行 `focus-capacity-asof` 写「容量参数定于 <日期>」 |
+| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity` |
+| ③「接下来」窄条 | `focus-next` / `focus-next-item`（`data-note-ref`） | 只写标题与时限；**点一条即换主卡**（视图内状态，不写任何数据） |
+| ④ 下钻层 | `focus-drill-entry` / `focus-drill` / `focus-back` | 点开后是 v1 的六箱画布原样，带一个「回到焦点」 |
+
+几条口径：
+
+- **Client 只画不算**：资格、排序、容量、可排时间、主卡与队列的内容全部来自快照
+  （`focus.card`／`focus.next`／`today.*`／`capacity.*`），这一层不重算任何一个。
+- **缺字段就少一行，不整卡消失**：完成要求缺失 → 那一行不画；预计耗时为 `null` → 写「未估算」
+  （不是「0 分钟」）；容量提示的 `fits` 为 `null` → 不装作知道装不装得下。
+- **主卡弱化纸感**（用户裁定）：主卡**没有折角、没有纸纹**，只留纸色调与一层浅影；
+  下钻层里的 v1 纸箱与便贴**纸感原样**（`.gtd-box__fold` 与 `.gtd-box::after` 的纸纹都没动）。
+- **配色与字体全部走宿主令牌**（`--dsw-alias-*`），明暗两套主题自动可读；
+  `prefers-reduced-motion: reduce` 时动效照旧压到近乎为零。
+- **焦点视图里不另造 `data-note-id`**：它指向的是「一条便贴」，
+  焦点视图的元素（卡、窄条、提醒位）用 `data-note-ref` 指回那条动作，
+  免得 `[data-note-id="…"]` 这种选择器命中错东西。
+- **抽屉里说清「为什么没进焦点」**：便贴 `eligible` 为 false 时，抽屉里出现
+  `data-role="drawer-ineligible"`（带 `data-reason`），原因值原样取 Host 给的 `ineligibleReason`。
+
+## 本周主攻带改名（v2 语义改名）
+
+v1 的「本周主攻」与 v2 的「焦点」是两回事，v2 起名字不再重叠：
+
+| | 旧 | 新 |
+|---|---|---|
+| 快照字段 | `snapshot.focus`（数组） | `snapshot.mainPush`（数组） |
+| DOM 角色 | `focus` | `main-push` |
+| DOM 角色 | `focus-item` | `main-push-item` |
+| DOM 角色 | `focus-title` | `main-push-title` |
+| DOM 角色 | `focus-due` | `main-push-due` |
+| DOM 角色 | `focus-heading` | `main-push-heading` |
+| 组件 | `FocusStrip` | `MainPushStrip` |
+| 词表键 | `focusHeading`／`focusEmpty` | `mainPushHeading`／`mainPushEmpty` |
+
+v2 的焦点是 `focus` 对象：`focus.card`（行动卡）、`focus.next`（「接下来」）、`focus.reminders`（提醒位）。
 
 ## 客户端单文件约束
 

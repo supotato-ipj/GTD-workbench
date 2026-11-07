@@ -3,6 +3,10 @@
  *
  * 断言的是画布上看得见的东西：主攻有一条自己的带子、位置在纸箱之外、
  * 深度色条与事务／日清明显不同，点主攻能开到那条便贴。
+ *
+ * ⚠️ **两个「焦点」不要混**：v1 的**本周主攻**在快照里叫 `mainPush`、DOM 角色叫 `main-push`；
+ * v2 的**焦点**是 `focus` 对象（`focus.card` / `focus.next`），角色叫 `focus-card` / `focus-next`。
+ * （工单 06「焦点只读上线」做的语义改名。）
  */
 
 import assert from 'node:assert/strict';
@@ -54,20 +58,23 @@ function barWidthOf(element) {
 
 test('接缝 B：主攻有一条自己的带子，条数与快照一致', async () => {
   const snapshot = await snapshotUnderTest();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({
+    clientPath,
+    props: { initialSnapshot: snapshot, initialView: 'canvas' },
+  });
   try {
-    const strip = env.document.querySelector('[data-role="focus"]');
+    const strip = env.document.querySelector('[data-role="main-push"]');
     assert.ok(strip, '画布上没有主攻带子');
-    assert.equal(strip.getAttribute('data-count'), String(snapshot.focus.length));
+    assert.equal(strip.getAttribute('data-count'), String(snapshot.mainPush.length));
     assert.equal(strip.getAttribute('data-count'), '2');
-    const items = [...strip.querySelectorAll('[data-role="focus-item"]')];
+    const items = [...strip.querySelectorAll('[data-role="main-push-item"]')];
     assert.deepEqual(
       items.map((item) => item.getAttribute('data-note-id')),
-      snapshot.focus.map((item) => item.id),
+      snapshot.mainPush.map((item) => item.id),
     );
     assert.deepEqual(
-      items.map((item) => item.querySelector('[data-role="focus-title"]').textContent),
-      snapshot.focus.map((item) => item.title),
+      items.map((item) => item.querySelector('[data-role="main-push-title"]').textContent),
+      snapshot.mainPush.map((item) => item.title),
     );
   } finally {
     await env.unmount();
@@ -76,9 +83,12 @@ test('接缝 B：主攻有一条自己的带子，条数与快照一致', async 
 
 test('接缝 B：主攻不混进任何纸箱——它不在纸箱里，纸箱也不在它里面', async () => {
   const snapshot = await snapshotUnderTest();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({
+    clientPath,
+    props: { initialSnapshot: snapshot, initialView: 'canvas' },
+  });
   try {
-    const strip = env.document.querySelector('[data-role="focus"]');
+    const strip = env.document.querySelector('[data-role="main-push"]');
     const board = env.document.querySelector('[data-role="board"]');
     // 主攻带子是画布的**兄弟**，不在画布里面，也不在任何纸箱里面。
     assert.notEqual(strip.parentNode, board);
@@ -88,7 +98,7 @@ test('接缝 B：主攻不混进任何纸箱——它不在纸箱里，纸箱也
     }
     // 纸箱里的便贴不是主攻条目：两者的 data-role 分开，不互相冒充。
     assert.ok(board.querySelectorAll('[data-role="note"]').length > 0);
-    assert.equal(board.querySelectorAll('[data-role="focus-item"]').length, 0);
+    assert.equal(board.querySelectorAll('[data-role="main-push-item"]').length, 0);
     assert.equal(strip.querySelectorAll('[data-role="box"]').length, 0);
     assert.equal(strip.querySelectorAll('[data-role="note"]').length, 0);
   } finally {
@@ -98,7 +108,10 @@ test('接缝 B：主攻不混进任何纸箱——它不在纸箱里，纸箱也
 
 test('接缝 B：深度色条与事务／日清明显不同（颜色与宽度都分开）', async () => {
   const snapshot = await snapshotUnderTest();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({
+    clientPath,
+    props: { initialSnapshot: snapshot, initialView: 'canvas' },
+  });
   try {
     const bands = [...env.document.querySelectorAll('[data-role="time-band"]')];
     assert.ok(bands.length >= 3, '画布上的时间档色条太少');
@@ -132,10 +145,13 @@ test('接缝 B：深度色条与事务／日清明显不同（颜色与宽度都
 
 test('接缝 B：点主攻带上的条目，打开的是那条便贴的抽屉', async () => {
   const snapshot = await snapshotUnderTest();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({
+    clientPath,
+    props: { initialSnapshot: snapshot, initialView: 'canvas' },
+  });
   try {
-    const first = snapshot.focus[0];
-    const item = env.document.querySelector(`[data-role="focus-item"][data-note-id="${first.id}"]`);
+    const first = snapshot.mainPush[0];
+    const item = env.document.querySelector(`[data-role="main-push-item"][data-note-id="${first.id}"]`);
     assert.ok(item, '主攻带子上找不到第一条');
     await env.click(item);
     const drawer = env.document.querySelector('[data-role="drawer"]');
@@ -147,15 +163,18 @@ test('接缝 B：点主攻带上的条目，打开的是那条便贴的抽屉', 
   }
 });
 
-test('接缝 B：快照没有 focus 字段时主攻带子说「本周没有」，不崩', async () => {
+test('接缝 B：快照没有 mainPush 字段时主攻带子说「本周没有」，不崩', async () => {
   const snapshot = await snapshotUnderTest();
-  const legacy = { ...snapshot, focus: undefined };
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: legacy } });
+  const legacy = { ...snapshot, mainPush: undefined };
+  const env = await mountClientPanel({
+    clientPath,
+    props: { initialSnapshot: legacy, initialView: 'canvas' },
+  });
   try {
-    const strip = env.document.querySelector('[data-role="focus"]');
-    assert.ok(strip, '没有 focus 时主攻带子整个消失了');
+    const strip = env.document.querySelector('[data-role="main-push"]');
+    assert.ok(strip, '没有 mainPush 时主攻带子整个消失了');
     assert.equal(strip.getAttribute('data-count'), '0');
-    assert.equal(strip.querySelectorAll('[data-role="focus-item"]').length, 0);
+    assert.equal(strip.querySelectorAll('[data-role="main-push-item"]').length, 0);
     assert.match(strip.textContent, /本周主攻/);
   } finally {
     await env.unmount();

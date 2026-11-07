@@ -90,7 +90,7 @@ test('接缝 B：快照里每条便贴都带 violations，规则在 Host 侧就�
 
 test('接缝 B：规则角标出现在且仅出现在违反检查项的便贴上', async () => {
   const snapshot = await snapshotUnderTest();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     const rows = renderedNotes(snapshot);
     assert.ok(rows.length > 0, '夹具里没有会被画出来的便贴，测试没有意义');
@@ -127,7 +127,7 @@ test('接缝 B：合规的便贴一个角标都没有', async () => {
       })),
     })),
   };
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: patched } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: patched, initialView: 'canvas' } });
   try {
     assert.equal(env.document.querySelectorAll('[data-role="rule-badge"]').length, 0);
   } finally {
@@ -139,7 +139,7 @@ test('接缝 B：点开便贴能看见缺了哪几样', async () => {
   const snapshot = await snapshotUnderTest();
   const waiting = snapshot.containers.find((container) => container.key === 'waiting');
   const target = waiting.notes.find((note) => note.violations.length > 0);
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     await env.click(env.document.querySelector(`[data-note-id="${target.id}"]`));
     const rules = env.document.querySelector('[data-role="drawer-rules"]');
@@ -159,7 +159,7 @@ test('接缝 B：点开便贴能看见缺了哪几样', async () => {
 
 test('接缝 B：角标不产生独立清单或独立面板', async () => {
   const snapshot = await snapshotUnderTest();
-  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot, initialView: 'canvas' } });
   try {
     // 角标只在便贴或箱签里，不另起一块板子。
     for (const badge of env.document.querySelectorAll('[data-role="rule-badge"]')) {
