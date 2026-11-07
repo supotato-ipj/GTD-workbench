@@ -1,0 +1,1302 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>焦点引导器 · 一次性假数据原型</title>
+<!--
+  ============================================================================
+  工单 04 · 一次性假数据原型（GitHub issue #4「03 · 观感原型」）
+  ============================================================================
+  这是**一次性原型**，不是主线代码：
+
+  - 单文件、零依赖、零构建：双击本文件即可在浏览器打开。
+  - 不接滴答、不读任何快照、不写任何文件、不进 app/ 主线。
+  - 全部数据为**虚构**：任务名、项目名、容量数值、时间均为编造，
+    不含真实案件、当事人、单位、人名或真实容量参数。
+  - 目的只有一个：在写正式代码之前，先确认「焦点引导器」这套形态
+    的**观感**（信息密度对比、主位是否真的压得住、窄条是否读得下去）。
+  - 确认观感之后，本文件**弃用或归档**，不进主线。接真实快照时另起实现。
+
+  形态依据：issue #1「工作台 v2：从六箱全景改为焦点引导器」
+  四层结构 = 顶部常驻 / 行动卡（主位）/「接下来」窄条 / 六箱下钻层。
+  ============================================================================
+-->
+<style>
+/* ---------------------------------------------------------------------------
+   1. 主题令牌
+   质感与配色沿用 v1 的做法：纸感来自折角、阴影、纸纹，不换字体；
+   配色集中在令牌里，明暗两套各一套，跟随系统并可手动覆盖。
+   --------------------------------------------------------------------------- */
+:root {
+  color-scheme: light dark;
+
+  /* 桌面与面板 */
+  --desk:        #e9e3d6;
+  --panel:       #fbf9f4;
+  --panel-sunk:  #f2ece0;
+  --panel-deep:  #f6f2e9;
+  --card:        #fffdf7;
+
+  /* 墨色 */
+  --ink:         #2c2822;
+  --ink-2:       #5e574a;
+  --ink-3:       #8b8371;
+
+  /* 线与影 */
+  --line:        #ded6c4;
+  --line-2:      #c9bda4;
+  --shadow-1:    0 1px 2px rgba(70, 58, 34, .10);
+  --shadow-2:    0 2px 8px rgba(70, 58, 34, .10);
+  --shadow-3:    0 8px 28px rgba(70, 58, 34, .18);
+
+  /* 时间档（与 v1 BAND_COLORS 同色相） */
+  --band-deep:   #4d7fe0;
+  --band-tx:     #2f9a72;
+  --band-daily:  #c9862c;
+
+  /* 主位强调色 */
+  --focus:       #3f6fd8;
+  --focus-ink:   #ffffff;
+  --focus-soft:  color-mix(in srgb, var(--focus) 12%, transparent);
+
+  /* 提示与警示 */
+  --warn:        #b3741c;
+  --warn-bg:     #f7ecd6;
+  --warn-line:   #ddc49a;
+  --ok:          #2f9a72;
+  --ok-soft:     color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+/* 系统偏好：暗色（手动指定浅色时不生效） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --desk:        #121110;
+    --panel:       #1e1c19;
+    --panel-sunk:  #262320;
+    --panel-deep:  #232019;
+    --card:        #272319;
+
+    --ink:         #ece6da;
+    --ink-2:       #b5ac9a;
+    --ink-3:       #857c6c;
+
+    --line:        #38342d;
+    --line-2:      #4c463c;
+    --shadow-1:    0 1px 2px rgba(0, 0, 0, .40);
+    --shadow-2:    0 2px 8px rgba(0, 0, 0, .45);
+    --shadow-3:    0 10px 30px rgba(0, 0, 0, .55);
+
+    --band-deep:   #7ea4f2;
+    --band-tx:     #4fbf95;
+    --band-daily:  #e0a856;
+
+    --focus:       #4f7ad4;
+    --focus-ink:   #ffffff;
+    --focus-soft:  color-mix(in srgb, var(--focus) 20%, transparent);
+
+    --warn:        #e0a856;
+    --warn-bg:     #362c1a;
+    --warn-line:   #5c4a26;
+    --ok:          #4fbf95;
+    --ok-soft:     color-mix(in srgb, var(--ok) 16%, transparent);
+  }
+}
+
+/* 手动指定暗色 */
+:root[data-theme="dark"] {
+  --desk:        #121110;
+  --panel:       #1e1c19;
+  --panel-sunk:  #262320;
+  --panel-deep:  #232019;
+  --card:        #272319;
+
+  --ink:         #ece6da;
+  --ink-2:       #b5ac9a;
+  --ink-3:       #857c6c;
+
+  --line:        #38342d;
+  --line-2:      #4c463c;
+  --shadow-1:    0 1px 2px rgba(0, 0, 0, .40);
+  --shadow-2:    0 2px 8px rgba(0, 0, 0, .45);
+  --shadow-3:    0 10px 30px rgba(0, 0, 0, .55);
+
+  --band-deep:   #7ea4f2;
+  --band-tx:     #4fbf95;
+  --band-daily:  #e0a856;
+
+  --focus:       #4f7ad4;
+  --focus-ink:   #ffffff;
+  --focus-soft:  color-mix(in srgb, var(--focus) 20%, transparent);
+
+  --warn:        #e0a856;
+  --warn-bg:     #362c1a;
+  --warn-line:   #5c4a26;
+  --ok:          #4fbf95;
+  --ok-soft:     color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   2. 底座
+   --------------------------------------------------------------------------- */
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  padding: 24px 16px;
+  background: var(--desk);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.desk {
+  max-width: 460px;
+  margin: 0 auto;
+}
+
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+
+/* 纸纹：只做「底稍微不匀一点」，不喧宾夺主。 */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image:
+    repeating-linear-gradient(0deg, color-mix(in srgb, var(--ink) 4%, transparent) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 2.5%, transparent) 0 1px, transparent 1px 4px);
+  opacity: .9;
+}
+.panel > * { position: relative; }
+
+/* ---------------------------------------------------------------------------
+   3. 第一层：顶部常驻
+   只是背景上一直亮着的几个数——不抢主位，但一直在。
+   --------------------------------------------------------------------------- */
+.topbar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-deep);
+}
+
+.stat {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 10px;
+  border-left: 1px solid var(--line);
+}
+.stat:first-child { padding-left: 0; border-left: none; }
+
+.stat__label {
+  display: block;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat__value {
+  display: block;
+  margin-top: 1px;
+  font-size: 19px;
+  line-height: 24px;
+  font-weight: 650;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat__value small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-left: 2px;
+}
+
+.stat--remaining .stat__value { color: var(--focus); }
+
+.topbar__tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+}
+
+.theme-toggle {
+  padding: 4px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.theme-toggle:hover { border-color: var(--ink-3); color: var(--ink); }
+
+.topbar__asof {
+  padding: 10px 16px 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ink-3);
+  background: var(--panel-deep);
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---------------------------------------------------------------------------
+   4. 第二层：行动卡（主位）
+   一条动作，四样必备（工作内容／完成时限／完成要求／预计耗时），
+   外加一句容量提示；两个写口（完成、改期）＋一个零写入的跳过。
+   --------------------------------------------------------------------------- */
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 520px; /* 下钻层是覆盖主区的绝对定位层，主区得有高度它才盖得住 */
+}
+
+/* 下钻层展开时把主区撑到能放下六箱全景，避免层层内滚动。 */
+.panel--drill .stage { min-height: 820px; }
+
+.focus {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 20px;
+  gap: 18px;
+}
+
+.card {
+  position: relative;
+  padding: 20px 18px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+}
+
+/* 折角：v1 纸箱的同一个语言，用在主卡上，让主卡也像一张纸。 */
+.card__fold {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 22px solid var(--panel-deep);
+  border-left: 22px solid transparent;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .10));
+}
+
+.card__band {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--band-deep);
+  background: color-mix(in srgb, var(--band-deep) 15%, transparent);
+}
+.card[data-band="事务"] .card__band {
+  color: var(--band-tx);
+  background: color-mix(in srgb, var(--band-tx) 15%, transparent);
+}
+.card[data-band="日清"] .card__band {
+  color: var(--band-daily);
+  background: color-mix(in srgb, var(--band-daily) 15%, transparent);
+}
+
+.card__title {
+  margin: 10px 0 0;
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: var(--ink);
+}
+
+.card__facts {
+  margin: 14px 0 0;
+  display: grid;
+  gap: 10px;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.fact__label {
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--ink-3);
+}
+
+.fact__value {
+  font-size: 13.5px;
+  line-height: 20px;
+  color: var(--ink);
+}
+
+.fact__value .hint {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-left: 6px;
+}
+
+/* 容量提示 */
+.capacity {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-deep);
+}
+
+.capacity__line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--ink);
+}
+
+.capacity__state {
+  font-weight: 650;
+  color: var(--ok);
+}
+.capacity--no .capacity__state { color: var(--warn); }
+
+.capacity__note {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.capacity__meter {
+  position: relative;
+  height: 6px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  overflow: hidden;
+}
+
+.capacity__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--ok);
+}
+.capacity--no .capacity__fill { background: var(--warn); }
+
+/* 写口：完成 / 改期 是写口（实心、描边），跳过是零写入（弱化、虚线分隔） */
+.writes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.btn {
+  appearance: none;
+  padding: 7px 14px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 19px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.btn--primary {
+  background: var(--focus);
+  color: var(--focus-ink);
+  font-weight: 600;
+}
+.btn--primary:hover { filter: brightness(1.06); }
+
+.btn--ghost {
+  background: var(--panel);
+  border-color: var(--line-2);
+  color: var(--ink-2);
+}
+.btn--ghost:hover { border-color: var(--ink-3); color: var(--ink); }
+
+.writes__sep {
+  flex: 1 1 auto;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, var(--line-2) 0 3px, transparent 3px 7px);
+}
+
+.btn--zero {
+  background: transparent;
+  border: none;
+  padding: 7px 2px;
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.btn--zero:hover { color: var(--ink-2); text-decoration: underline; }
+
+.writes__zeronote {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* 卡脚：项目指针 */
+.card__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line-2);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.card__project {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.card__link {
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.card__link:hover { border-color: var(--ink-3); color: var(--ink); }
+
+/* ---------------------------------------------------------------------------
+   5. 第三层：「接下来」窄条队列
+   只写标题与时限——窄、密、安静。点一下换主卡。
+   --------------------------------------------------------------------------- */
+.queue {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.queue__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ink-3);
+}
+
+.queue__count { color: var(--ink-3); }
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--band-tx);
+  border-radius: 9px;
+  background: var(--panel-deep);
+  color: var(--ink-2);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.strip[data-band="深度"] { border-left-color: var(--band-deep); }
+.strip:hover { border-color: var(--line-2); color: var(--ink); }
+
+.strip__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.strip__due {
+  flex: 0 0 auto;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.strip__swap {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--ink-3);
+  opacity: 0;
+}
+.strip:hover .strip__swap,
+.strip:focus-visible .strip__swap { opacity: 1; }
+
+/* ---------------------------------------------------------------------------
+   6. 第四层：下钻入口 → 六箱全景（覆盖主区）
+   --------------------------------------------------------------------------- */
+.drill-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-2);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.drill-entry:hover { border-color: var(--ink-3); color: var(--ink); }
+.drill-entry__chev { margin-left: auto; color: var(--ink-3); }
+
+.drill {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  overflow-y: auto;
+}
+
+.drill[hidden] { display: none; }
+
+.drill__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-deep);
+}
+
+.drill__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.drill__caption {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.drill__body {
+  padding: 14px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.boxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* 纸箱 */
+.box {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-sunk);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.box__fold {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 14px solid var(--panel);
+  border-left: 14px solid transparent;
+}
+
+.box__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.box__name {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.box__src {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.box__count {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.box__body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 10px;
+}
+
+/* 便贴 */
+.mini {
+  position: relative;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+
+.mini__band {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--line-2);
+}
+.mini[data-band="深度"] .mini__band { width: 5px; background: var(--band-deep); }
+.mini[data-band="事务"] .mini__band { background: var(--band-tx); }
+.mini[data-band="日清"] .mini__band { background: var(--band-daily); }
+
+.mini__title {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.mini__meta {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--ink-3);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mini__chip {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  line-height: 14px;
+  background: color-mix(in srgb, var(--focus) 14%, transparent);
+  color: var(--focus);
+}
+
+.mini__rule {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--warn-line);
+  border-radius: 4px;
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 9px;
+  line-height: 13px;
+}
+
+/* 箱签 */
+.box__tag {
+  position: relative;
+  padding: 5px 8px;
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--ink-3);
+  border-radius: 6px;
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+}
+
+.box__tag-title {
+  font-size: 11.5px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.box__tag-next {
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--ink-3);
+}
+
+/* 已沉底 */
+.sunk {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-sunk);
+  padding: 8px 10px 10px;
+}
+
+.sunk__title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--ink-3);
+}
+
+.sunk__list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sunk__note {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  opacity: .6;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--ink-2);
+}
+
+.sunk__when { color: var(--ink-3); font-size: 10px; }
+
+.drill__note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 17px;
+  color: var(--ink-3);
+}
+
+/* 页脚 */
+.foot {
+  padding: 12px 16px 16px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--line);
+}
+
+/* 占位提示（写口在原型里不写入） */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translate(-50%, 8px);
+  max-width: 320px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-2);
+  box-shadow: var(--shadow-2);
+  font-size: 12px;
+  line-height: 18px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.toast[data-show="true"] {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------------------------------------------------------------------------
+   7. 尊重系统的减少动效偏好
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+  .toast { transform: translate(-50%, 0); }
+}
+
+/* 键盘可达：焦点环别丢 */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+</style>
+</head>
+<body>
+
+<div class="desk">
+  <main class="panel" id="panel">
+
+    <!-- ============ 第一层：顶部常驻 ============ -->
+    <header class="topbar">
+      <div class="stat">
+        <span class="stat__label">今日日清</span>
+        <span class="stat__value" id="statDaily">2<small>/3 未还</small></span>
+      </div>
+      <div class="stat stat--remaining">
+        <span class="stat__label">剩余可排时间</span>
+        <span class="stat__value" id="statRemaining">90<small>分钟</small></span>
+      </div>
+      <div class="stat">
+        <span class="stat__label">深度名额</span>
+        <span class="stat__value" id="statQuota">0<small>/1</small></span>
+      </div>
+      <div class="topbar__tools">
+        <button type="button" class="theme-toggle" id="themeToggle" title="切换主题：跟随系统 / 浅色 / 深色">跟随系统</button>
+      </div>
+    </header>
+    <div class="topbar__asof" id="asOf">容量参数定于 2026-03-02（虚构示例值）</div>
+
+    <!-- ============ 焦点区（第二、三层） 与 下钻层（第四层） ============ -->
+    <div class="stage">
+
+      <section class="focus" id="focus">
+
+        <!-- 第二层：行动卡（主位） -->
+        <article class="card" id="card">
+          <span class="card__fold" aria-hidden="true"></span>
+
+          <span class="card__band" id="cardBand">深度</span>
+
+          <h1 class="card__title" id="cardTitle">复核合同条款</h1>
+
+          <div class="card__facts">
+            <div class="fact">
+              <span class="fact__label">完成时限</span>
+              <span class="fact__value" id="cardDue">今天 17:00<span class="hint">外部约定</span></span>
+            </div>
+            <div class="fact">
+              <span class="fact__label">完成要求</span>
+              <span class="fact__value" id="cardReq">逐条核对模板，标出不一致的三处并留痕<span class="hint">来自正文前缀</span></span>
+            </div>
+            <div class="fact">
+              <span class="fact__label">预计耗时</span>
+              <span class="fact__value" id="cardEst">45 分钟</span>
+            </div>
+          </div>
+
+          <div class="capacity" id="capacity">
+            <div class="capacity__line">
+              <span class="capacity__state" id="capacityState">装得下</span>
+              <span class="capacity__note" id="capacityNote">今日剩余 90 分钟，这件 45 分钟</span>
+            </div>
+            <div class="capacity__meter"><span class="capacity__fill" id="capacityFill" style="width:50%"></span></div>
+          </div>
+
+          <div class="writes">
+            <button type="button" class="btn btn--primary" data-write="完成">完成</button>
+            <button type="button" class="btn btn--ghost" data-write="改期">改期</button>
+            <span class="writes__sep" aria-hidden="true"></span>
+            <button type="button" class="btn btn--zero" data-write="跳过">跳过</button>
+            <span class="writes__zeronote">零写入</span>
+          </div>
+
+          <div class="card__foot">
+            <span>项目</span>
+            <span class="card__project" id="cardProject">合同复核流程</span>
+            <button type="button" class="card__link" data-write="项目清单">项目清单 →</button>
+          </div>
+        </article>
+
+        <!-- 第三层：「接下来」窄条队列 -->
+        <section class="queue" aria-label="接下来">
+          <div class="queue__head">
+            <span>接下来</span>
+            <span class="queue__count" id="queueCount">3 条 · 点一条即换主卡</span>
+          </div>
+          <div id="queue"></div>
+        </section>
+
+        <!-- 第四层：下钻入口 -->
+        <button type="button" class="drill-entry" id="drillEntry">
+          <span>打开六箱全景</span>
+          <span class="drill-entry__chev">▾</span>
+        </button>
+      </section>
+
+      <!-- 第四层：六箱下钻层（覆盖主区） -->
+      <section class="drill" id="drill" hidden aria-label="六箱全景">
+        <header class="drill__head">
+          <button type="button" class="btn btn--ghost" id="drillClose">← 回到焦点</button>
+          <h2 class="drill__title">六箱全景</h2>
+          <span class="drill__caption">示意，非真实数据</span>
+        </header>
+        <div class="drill__body">
+          <div class="boxes" id="boxes"></div>
+
+          <section class="sunk">
+            <h3 class="sunk__title">已沉底</h3>
+            <div class="sunk__list">
+              <div class="sunk__note"><span>归档上季度材料</span><span class="sunk__when">本周一</span></div>
+              <div class="sunk__note"><span>更新联系人名单</span><span class="sunk__when">上周五</span></div>
+            </div>
+          </section>
+
+          <p class="drill__note">
+            这一层是 v1 六箱画布的示意：纸箱、便贴、箱签、已沉底、规则角标都在，
+            只是退到幕后 —— 全景还在，只是不占主位。
+          </p>
+        </div>
+      </section>
+
+    </div>
+
+    <footer class="foot">
+      原型：工单 04 的一次性假数据原型，不接滴答、不写任何文件、不进主线。
+      画面内全部内容均为虚构。
+    </footer>
+
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* ============================================================================
+   假数据（全部虚构）
+   —— 结构照抄 issue #1 的快照契约扩展，值全是编的。
+   ============================================================================ */
+const DATA = {
+  top: {
+    dailyTotal: 3,
+    dailyUndone: 2,
+    remainingMinutes: 90,
+    deepQuota: 1,
+    deepUsed: 0,
+    capacityAsOf: '2026-03-02'
+  },
+
+  /* 主位行动卡：一条动作 + 四样必备 + 容量提示 + 项目指针 */
+  card: {
+    title: '复核合同条款',
+    band: '深度',
+    due: '今天 17:00',
+    dueKind: '外部约定',
+    requirement: '逐条核对模板，标出不一致的三处并留痕',
+    requirementSource: '来自正文前缀',
+    estimate: 45,
+    project: '合同复核流程'
+  },
+
+  /* 「接下来」窄条：只写标题与时限 */
+  queue: [
+    { title: '整理归档台账', due: '今天 18:00', dueKind: '自己定', band: '事务',
+      requirement: '把当天记录归到一处并标好索引', estimate: 25, project: '台账整理' },
+    { title: '更新表单模板', due: '明天', dueKind: '自己定', band: '事务',
+      requirement: '补上缺失的两栏并同步到默认模板', estimate: 20, project: '表单规范化' },
+    { title: '确认交付范围', due: '本周五', dueKind: '外部约定', band: '深度',
+      requirement: '与相关方逐项确认交付项并记下结论', estimate: 60, project: '合同复核流程' }
+  ],
+
+  /* 六箱全景示意：纸箱 / 便贴 / 箱签 / 规则角标 */
+  boxes: [
+    { name: '收集箱', list: '收集箱', items: [
+      { kind: 'note', title: '记一笔：换季收纳箱还没买', meta: '未判定', rule: true },
+      { kind: 'note', title: '记一笔：问一下下季度排期', meta: '未判定' }
+    ]},
+    { name: '项目', list: '项目清单', items: [
+      { kind: 'tag', title: '合同复核流程', next: '复核合同条款' }
+    ]},
+    { name: '执行', list: '执行清单', items: [
+      { kind: 'note', title: '复核合同条款', band: '深度', meta: '今天 17:00', chip: '本周主攻' },
+      { kind: 'note', title: '整理归档台账', band: '事务', meta: '今天 18:00' },
+      { kind: 'note', title: '更新表单模板', band: '事务', meta: '明天' },
+      { kind: 'note', title: '确认交付范围', band: '深度', meta: '本周五' }
+    ]},
+    { name: '等待', list: '等待清单', items: [
+      { kind: 'note', title: '等回执：补充材料', band: '事务', meta: '什么时候回：本周三', rule: true }
+    ]},
+    { name: '日历', list: '待办日历', items: [
+      { kind: 'note', title: '外部约定：合同交付确认', meta: '今天 17:00' }
+    ]},
+    { name: '可能', list: '可能清单', items: [
+      { kind: 'note', title: '也许：整理旧照片', meta: '以后' }
+    ]}
+  ]
+};
+
+/* ============================================================================
+   渲染
+   ============================================================================ */
+const $ = (id) => document.getElementById(id);
+
+let current = DATA.card;   /* 主位当前是哪一条 */
+let queue = DATA.queue.slice(); /* 窄条队列 */
+
+/* ---- 顶部常驻 ---- */
+function renderTop() {
+  const t = DATA.top;
+  $('statDaily').innerHTML = t.dailyUndone + '<small>/' + t.dailyTotal + ' 未还</small>';
+  $('statRemaining').innerHTML = t.remainingMinutes + '<small>分钟</small>';
+  $('statQuota').innerHTML = t.deepUsed + '<small>/' + t.deepQuota + '</small>';
+  $('asOf').textContent = '容量参数定于 ' + t.capacityAsOf + '（虚构示例值）';
+}
+
+/* ---- 行动卡 ---- */
+function renderCard() {
+  const c = current;
+  const remaining = DATA.top.remainingMinutes;
+  const fits = c.estimate <= remaining;
+
+  $('cardBand').textContent = c.band;
+  $('card').dataset.band = c.band;
+  $('cardTitle').textContent = c.title;
+  $('cardDue').innerHTML = c.due + '<span class="hint">' + c.dueKind + '</span>';
+  $('cardReq').innerHTML = c.requirement + '<span class="hint">' + (c.requirementSource || '来自正文前缀') + '</span>';
+  $('cardEst').textContent = c.estimate + ' 分钟';
+  $('cardProject').textContent = c.project;
+
+  const cap = $('capacity');
+  cap.classList.toggle('capacity--no', !fits);
+  $('capacityState').textContent = fits ? '装得下' : '装不下';
+  $('capacityNote').textContent = fits
+    ? '今日剩余 ' + remaining + ' 分钟，这件 ' + c.estimate + ' 分钟'
+    : '今日只剩 ' + remaining + ' 分钟，这件要 ' + c.estimate + ' 分钟';
+  const pct = Math.max(4, Math.min(100, Math.round(c.estimate / Math.max(remaining, c.estimate) * 100)));
+  $('capacityFill').style.width = pct + '%';
+}
+
+/* ---- 「接下来」窄条 ---- */
+function renderQueue() {
+  const box = $('queue');
+  box.textContent = '';
+  $('queueCount').textContent = queue.length + ' 条 · 点一条即换主卡';
+
+  queue.forEach((item, index) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'strip';
+    btn.dataset.band = item.band;
+    btn.title = '点它换主卡：' + item.title;
+
+    const title = document.createElement('span');
+    title.className = 'strip__title';
+    title.textContent = item.title;
+
+    const due = document.createElement('span');
+    due.className = 'strip__due';
+    due.textContent = item.due;
+
+    const swap = document.createElement('span');
+    swap.className = 'strip__swap';
+    swap.textContent = '换主卡 ›';
+
+    btn.append(title, due, swap);
+    btn.addEventListener('click', () => swapToCard(index));
+    box.appendChild(btn);
+  });
+}
+
+/* 换主卡：选中的上主位，原主位回到队列前面。 */
+function swapToCard(index) {
+  const picked = queue.splice(index, 1)[0];
+  queue.unshift(current);
+  current = picked;
+  renderCard();
+  renderQueue();
+}
+
+/* ---- 六箱全景（示意） ---- */
+function renderBoxes() {
+  const host = $('boxes');
+  host.textContent = '';
+
+  DATA.boxes.forEach((box) => {
+    const el = document.createElement('section');
+    el.className = 'box';
+
+    const fold = document.createElement('span');
+    fold.className = 'box__fold';
+    el.appendChild(fold);
+
+    const head = document.createElement('div');
+    head.className = 'box__head';
+    head.innerHTML =
+      '<h3 class="box__name"></h3>' +
+      '<span class="box__src"></span>' +
+      '<span class="box__count"></span>';
+    head.querySelector('.box__name').textContent = box.name;
+    head.querySelector('.box__src').textContent = box.list;
+    head.querySelector('.box__count').textContent = box.items.length + ' 条';
+    el.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'box__body';
+
+    box.items.forEach((item) => {
+      if (item.kind === 'tag') {
+        const tag = document.createElement('div');
+        tag.className = 'box__tag';
+        tag.innerHTML = '<div class="box__tag-title"></div><div class="box__tag-next"></div>';
+        tag.querySelector('.box__tag-title').textContent = item.title;
+        tag.querySelector('.box__tag-next').textContent = '下一步：' + item.next;
+        body.appendChild(tag);
+        return;
+      }
+      const note = document.createElement('div');
+      note.className = 'mini';
+      note.dataset.band = item.band || '';
+      note.innerHTML =
+        '<span class="mini__band"></span>' +
+        '<p class="mini__title"></p>' +
+        '<div class="mini__meta"><span class="mini__meta-text"></span></div>';
+      note.querySelector('.mini__title').textContent = item.title;
+      note.querySelector('.mini__meta-text').textContent = item.meta || '';
+      if (item.chip) {
+        const chip = document.createElement('span');
+        chip.className = 'mini__chip';
+        chip.textContent = item.chip;
+        note.querySelector('.mini__meta').appendChild(chip);
+      }
+      if (item.rule) {
+        const badge = document.createElement('span');
+        badge.className = 'mini__rule';
+        badge.textContent = '⚑';
+        badge.title = '规则角标：违反容器规则';
+        note.appendChild(badge);
+      }
+      body.appendChild(note);
+    });
+
+    el.appendChild(body);
+    host.appendChild(el);
+  });
+}
+
+/* ============================================================================
+   交互（原型级：只为了让人看清形态，不写真实数据）
+   ============================================================================ */
+
+/* 主题：跟随系统 / 浅色 / 深色 */
+const THEMES = ['auto', 'light', 'dark'];
+const THEME_LABEL = { auto: '跟随系统', light: '浅色', dark: '深色' };
+/* 初始模式取自 <html data-theme>：默认 auto（跟随系统），也可在文件里直接钉死某套主题。 */
+let themeIndex = Math.max(0, THEMES.indexOf(document.documentElement.dataset.theme || 'auto'));
+
+function applyTheme() {
+  const mode = THEMES[themeIndex];
+  document.documentElement.dataset.theme = mode;
+  $('themeToggle').textContent = THEME_LABEL[mode];
+  $('themeToggle').title = '当前：' + THEME_LABEL[mode] + '（点击切换）';
+}
+
+$('themeToggle').addEventListener('click', () => {
+  themeIndex = (themeIndex + 1) % THEMES.length;
+  applyTheme();
+});
+
+/* 写口占位：原型不写任何东西，点了给一句说明。 */
+let toastTimer = null;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.dataset.show = 'true';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.dataset.show = 'false'; }, 2200);
+}
+
+document.querySelectorAll('[data-write]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const kind = btn.dataset.write;
+    if (kind === '完成') toast('占位：正式版此处写滴答勾选（原型不写入）');
+    else if (kind === '改期') toast('占位：正式版此处写滴答截止日（原型不写入）');
+    else if (kind === '跳过') toast('占位：跳过是纯视图状态，零写入');
+    else toast('占位：正式版此处打开项目清单');
+  });
+});
+
+/* 下钻层：展开覆盖主区，关闭回到焦点。 */
+function openDrill() {
+  $('drill').hidden = false;
+  $('focus').style.display = 'none';
+  $('panel').classList.add('panel--drill');
+  $('drillClose').focus();
+}
+
+function closeDrill() {
+  $('drill').hidden = true;
+  $('focus').style.display = '';
+  $('panel').classList.remove('panel--drill');
+  $('drillEntry').focus();
+}
+
+$('drillEntry').addEventListener('click', openDrill);
+$('drillClose').addEventListener('click', closeDrill);
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('drill').hidden) closeDrill();
+});
+
+/* 初始渲染 */
+applyTheme();
+renderTop();
+renderCard();
+renderQueue();
+renderBoxes();
+</script>
+</body>
+</html>
