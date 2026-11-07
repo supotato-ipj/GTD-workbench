@@ -5,6 +5,11 @@
  * 不引构建步骤：用 `React.createElement`（对齐官方模板），样式只用宿主主题令牌 `--dsw-alias-*`，
  * 不依赖 `dsh-client-ui-primitives`。
  *
+ * **单文件**：这个文件就是全部 Client 半边——只有一个入口（下面这个 `load`），
+ * 没有第二个 client 入口、没有构建步骤（不引打包器、不引 TypeScript、不写 JSX），
+ * `require` 只用来取依赖包（宿主模块表里的 `react`），不用来引本地的 `lib/*.js`。
+ * 三条约束各有一条测试守着（`test/client-single-file.test.js`），理由写在 `app/README.md`。
+ *
  * 数据只从本机 HTTP 路由取（ADR-0008）——Client 半边不碰滴答，也不直接访问滴答。
  */
 
@@ -1717,8 +1722,153 @@ window.__ModuleLoader__.load({
     }
     /* gtd:05 end */
 
+    /* v2:shell 面板外壳与视图（GitHub issue #5「04 · 面板外壳拆分」）：外壳管横切的事，视图只画 */
     /**
-     * 主区面板：打开就拉一次数，另配一个手动刷新按钮（spec「拉数时机」）。
+     * 视图模式的取值。
+     *
+     * `canvas` 是 v1 的六箱画布，`focus` 是 v2 的焦点引导器。
+     * 旧画布仍是**默认**视图——这一层只是把「画哪一个」从取数与刷新里摘出来。
+     */
+    const VIEW_MODE = { CANVAS: 'canvas', FOCUS: 'focus' };
+
+    /** 默认画哪个视图。旧画布是默认。 */
+    const DEFAULT_VIEW_MODE = VIEW_MODE.CANVAS;
+
+    /**
+     * 取一句文案：宿主词表里有就用词表里的，没有就退回这里的默认写法。
+     *
+     * 这一层新增的文案（视图切换、焦点视图占位）还没登记进宿主词表——
+     * 词表在 `app/locale/*.json`，登记它要改那个文件，不在本票的文件范围里。
+     * 所以先给一个能读的默认写法；等词表登记了，同一个键会自动切到词表的说法。
+     * @param {(key: string) => string} t - 翻译函数。
+     * @param {string} key - 词表键。
+     * @param {string} fallback - 词表里没有时的默认写法。
+     * @returns {string} 文案。
+     */
+    function textOf(t, key, fallback) {
+      const value = t(key);
+      return typeof value === 'string' && value.length > 0 && value !== key ? value : fallback;
+    }
+
+    /**
+     * 焦点视图（占位）。
+     *
+     * 这一层**是空的**：资格、排序、容量、写口都是后面的票。
+     * 下一票往 `data-role="focus-view"` 里填内容即可——外壳（取数、加载态、错误态、刷新）一行都不用改。
+     * @param {object} props - props：`snapshot`、`t`、`onReload`。
+     * @returns {object} React 元素。
+     */
+    function FocusView(props) {
+      const t = props.t;
+      return h(
+        'div',
+        {
+          className: 'gtd-focus-view',
+          'data-role': 'focus-view',
+          'data-state': 'placeholder',
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: '1 1 auto',
+            minHeight: 0,
+            padding: '24px',
+            background: 'var(--dsw-alias-bg-base)',
+          },
+        },
+        h(
+          'div',
+          {
+            'data-role': 'focus-view-placeholder',
+            style: {
+              padding: '12px 16px',
+              border: '1px dashed var(--dsw-alias-border-l3)',
+              borderRadius: 'var(--dsw-radius-md)',
+              color: 'var(--dsw-alias-label-secondary)',
+              fontSize: '13px',
+              lineHeight: '20px',
+            },
+          },
+          textOf(t, 'focusViewPending', '焦点视图待接入'),
+        ),
+      );
+    }
+
+    /**
+     * 六箱画布视图：v1 的版面原样搬过来。
+     *
+     * **不套任何 DOM 元素**（用 Fragment 返回）：画布这一段的 DOM 层级与拆分前完全一致，
+     * 既有选择器（`[data-role="focus"]`／`[data-role="board"]`／`[data-role="sunk"]`）一条都不用改。
+     * @param {object} props - props：`snapshot`、`t`、`motions`、`onOpenFocus`、`onReload`。
+     * @returns {object} React 元素。
+     */
+    function CanvasView(props) {
+      const t = props.t;
+      const snapshot = props.snapshot;
+      return h(
+        React.Fragment,
+        null,
+        h(FocusStrip, {
+          focus: snapshot !== null && typeof snapshot === 'object' ? snapshot.focus : [],
+          t,
+          onOpen: props.onOpenFocus,
+        }),
+        h(WorkbenchBoard, { snapshot, t, motions: props.motions }),
+        h(SunkArea, {
+          sunk: snapshot !== null && typeof snapshot === 'object' ? snapshot.sunk : null,
+          t,
+          motions: props.motions,
+        }),
+      );
+    }
+
+    /**
+     * 视图切换：两个按钮，明说现在画的是哪一个视图。
+     *
+     * 状态住在外壳里（`viewMode`），这里只把状态变成两个可点的控件。
+     * @param {object} props - props：`t`、`mode`（当前视图）、`onChange`（切视图）。
+     * @returns {object} React 元素。
+     */
+    function ViewSwitcher(props) {
+      const t = props.t;
+      const mode = props.mode === VIEW_MODE.FOCUS ? VIEW_MODE.FOCUS : VIEW_MODE.CANVAS;
+      const button = (key, label) =>
+        h(
+          'button',
+          {
+            type: 'button',
+            'data-role': `view-switch-${key}`,
+            'data-active': mode === key ? 'true' : 'false',
+            onClick: () => props.onChange(key),
+            style: {
+              padding: '2px 10px',
+              border: '1px solid ' + (mode === key ? 'var(--dsw-alias-border-l3)' : 'transparent'),
+              borderRadius: 'var(--dsw-radius-md)',
+              background: mode === key ? 'var(--dsw-alias-bg-module-platform)' : 'transparent',
+              color: mode === key ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)',
+              font: 'inherit',
+              fontSize: '12px',
+              lineHeight: '19px',
+              cursor: 'pointer',
+            },
+          },
+          label,
+        );
+      return h(
+        'div',
+        { 'data-role': 'view-switch', 'data-view': mode, style: { display: 'flex', gap: '4px' } },
+        button(VIEW_MODE.CANVAS, textOf(t, 'viewCanvasLabel', '六箱画布')),
+        button(VIEW_MODE.FOCUS, textOf(t, 'viewFocusLabel', '焦点视图')),
+      );
+    }
+    /* v2:shell end */
+
+    /**
+     * 主区面板（**外壳**）：打开就拉一次数，另配一个手动刷新按钮。
+     *
+     * 外壳只管横切的事——取数、加载态、错误态、刷新、当前画哪一个视图。
+     * 它自己不画画布：画什么由两个视图组件决定（旧画布 `CanvasView`、焦点视图 `FocusView`），
+     * 视图只收 `snapshot` 与几个回调，所以**加新视图不用动取数、错误处理与刷新**。
      * @param {object} props - occupant props。
      * @returns {object} React 元素。
      */
@@ -1782,6 +1932,10 @@ window.__ModuleLoader__.load({
         [state.snapshot],
       );
       /* gtd:04 end */
+      /* v2:shell 当前画哪一个视图：状态住在外壳里，视图自己不决定 */
+      const [viewMode, setViewMode] = React.useState(DEFAULT_VIEW_MODE);
+      const ViewComponent = viewMode === VIEW_MODE.FOCUS ? FocusView : CanvasView;
+      /* v2:shell end */
       if (state.status === 'loading') {
         return h(
           'div',
@@ -1794,7 +1948,14 @@ window.__ModuleLoader__.load({
       }
       return h(
         'div',
-        { className: 'gtd-workbench', 'data-role': 'panel', 'data-state': 'ready', style: { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } },
+        {
+          className: 'gtd-workbench',
+          'data-role': 'panel',
+          'data-state': 'ready',
+          /* v2:shell 当前画的是哪一个视图：摆在面板上，人与测试都看得见 */
+          'data-view': viewMode,
+          style: { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 },
+        },
         h(
           'header',
           {
@@ -1808,6 +1969,9 @@ window.__ModuleLoader__.load({
             },
           },
           h('h1', { 'data-role': 'panel-title', style: { margin: 0, fontSize: '15px', lineHeight: '22px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' } }, t('title')),
+          /* v2:shell 切换视图：状态在外壳里，这里只是两个控件 */
+          h(ViewSwitcher, { t, mode: viewMode, onChange: setViewMode }),
+          /* v2:shell end */
           h(
             'button',
             {
@@ -1829,19 +1993,20 @@ window.__ModuleLoader__.load({
             t('refresh'),
           ),
         ),
-        h(FocusStrip, {
-          focus: state.snapshot !== null && typeof state.snapshot === 'object' ? state.snapshot.focus : [],
-          t,
-          onOpen: openFromFocus,
-        }),
-        h(NoteOpenContext.Provider, { value: setOpenedNote }, h(WorkbenchBoard, { snapshot: state.snapshot, t, motions })),
-        /* gtd:07 已沉底区挂在画布下面：展示区，不是回收箱 */
-        h(SunkArea, {
-          sunk: state.snapshot !== null && typeof state.snapshot === 'object' ? state.snapshot.sunk : null,
-          t,
-          motions,
-        }),
-        /* gtd:07 end */        /* gtd:05 抽屉挂在画布**外面**、面板里面：它是覆盖层，不动画布版面 */
+        /* v2:shell 视图层：Provider 不产生 DOM 元素，画布那一段的层级与拆分前完全一样 */
+        h(
+          NoteOpenContext.Provider,
+          { value: setOpenedNote },
+          h(ViewComponent, {
+            snapshot: state.snapshot,
+            t,
+            motions,
+            onOpenFocus: openFromFocus,
+            /* 外壳把刷新也递下去：视图要用（写口写完要重画）时自己叫，不用去碰取数 */
+            onReload: load,
+          }),
+        ),
+        /* v2:shell end */        /* gtd:05 抽屉挂在画布**外面**、面板里面：它是覆盖层，不动画布版面 */
         openedNote === null
           ? null
           : h(NoteDrawer, {
@@ -1970,6 +2135,9 @@ window.__ModuleLoader__.load({
        *
        * `installStyles`、`styles`、`summarizeForMotion`、`motionsFor` 只是为了测试能核对它们
        * （样式表原文、浏览器侧差异逻辑与 `app/lib/diff.js` 是否一致），不改变运行时行为。
+       *
+       * `FocusView`／`CanvasView`／`ViewSwitcher` 是**视图层**：它们与外壳（`WorkbenchPanel`）
+       * 由**同一个**入口导出——客户端只有一个入口，没有第二个 client 文件。
        */
       components: {
         WorkbenchIcon,
@@ -1977,6 +2145,9 @@ window.__ModuleLoader__.load({
         WorkbenchBoard,
         WorkbenchBox,
         WorkbenchNote,
+        CanvasView,
+        FocusView,
+        ViewSwitcher,
         installStyles,
         summarizeForMotion,
         motionsFor,

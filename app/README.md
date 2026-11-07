@@ -82,7 +82,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | 文件 | 作用 |
 |---|---|
 | `index.js` | Host 半边：`ctx.effect` 里用 `ctx.webServer.register` 开一条本机路由，挂上三个依赖 |
-| `client.js` | Client 半边：左栏图标 + 主区面板（`React.createElement`，不引构建步骤） |
+| `client.js` | Client 半边：左栏图标 + 主区面板（**外壳**与**视图**两层，`React.createElement`，不引构建步骤） |
 | `lib/containers.js` | 六个纸箱与滴答清单 id（用完整 24 位 id） |
 | `lib/config.js` | 本地私有配置 `local-config.json` 的只读读取 |
 | `lib/dida.js` | 用 `process.execPath` + 真实入口调滴答；只跑读命令（`task filter` / `task completed`） |
@@ -107,3 +107,37 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 - 已沉底：画布下方，最近七天已勾选的条目按完成日堆叠；每箱角标另标完成数。
 - 规则角标：违反容器规则的便贴亮一个 ⚑，点开看缺了什么。
 - 点便贴开抽屉：滴答原始字段 + markdown 里的「为什么／验收标准／卡点」。
+
+## 面板外壳与视图
+
+主区面板分两层（GitHub issue #5「04 · 面板外壳拆分（前置重构）」）：
+
+| 层 | 组件 | 负责 |
+|---|---|---|
+| **外壳** | `WorkbenchPanel` | 取数、加载态、错误态、刷新、当前画哪一个视图。**它自己不画画布。** |
+| **视图** | `CanvasView` | v1 的六箱画布（纸箱、便贴、箱签、已沉底、规则角标、本周主攻带）——原样下沉，不重写 |
+| **视图** | `FocusView` | 焦点引导器。**这一票只是占位**（`data-role="focus-view"` 里写着「焦点视图待接入」） |
+
+- 视图只收 `snapshot` 与几个回调，**加新视图不用动取数、错误处理与刷新**。
+- 视图切换的状态住在外壳里（`viewMode`），摆在面板根上：`data-role="panel"` 的 `data-view="canvas|focus"`。
+  切换控件是 `data-role="view-switch"` 里的两个按钮（`view-switch-canvas`／`view-switch-focus`）。
+- **旧画布仍是默认视图**（`data-view="canvas"`）。画布那一段的 DOM 层级与拆分前完全一样——
+  视图层用 Fragment 返回，不套任何新元素，既有选择器（`[data-role="board"]` 等）一条都不用改。
+
+## 客户端单文件约束
+
+Client 半边**就是 `client.js` 一个文件**。三条约束，各有一条测试守着
+（`test/client-single-file.test.js`）：
+
+| 约束 | 含义 |
+|---|---|
+| **只有一个 client 入口** | `window.__ModuleLoader__.load(...)` 全文只出现一次；`components.WorkbenchPanel`、`components.FocusView`、`components.CanvasView` 都由**这一个**入口导出 |
+| **无构建步骤** | 不引打包器（esbuild／webpack／rollup／vite）、不引 TypeScript、不写 JSX；元素一律 `React.createElement` 手写，`package.json` 里也没有构建脚本 |
+| **`require` 只用于取依赖包** | `require` 只用来取宿主模块表里的依赖（当前只有 `react`）；**不**用来引本地的 `lib/*.js` |
+
+为什么不能用 ES 模块的 `import` 引 `lib/*.js`：`client.js` 是**经典脚本**（浏览器端由
+`window.__ModuleLoader__` 收下），不是 ES 模块，模块语法在浏览器里不可用。
+所以 Host 侧算出来的东西（分段、违规、主攻、焦点资格……）只能靠**快照**这一个契约传过来：
+Client 只画不算。想在客户端复用 Host 侧的纯函数，只能在客户端镜像一份，并用测试盯住两边不漂
+（`lib/diff.js` 与 `client.js` 的差异逻辑已有这样一条断言）。
+
