@@ -14,6 +14,7 @@
 
 import { estimateOf } from './capacity.js';
 import { isFocusNote } from './focus.js';
+import { requirementOf } from './requirement.js';
 
 /**
  * 不合格原因的取值全集。
@@ -244,6 +245,8 @@ function normalizeContext(context) {
     today: typeof source.today === 'string' ? source.today : '',
     nowTime: typeof source.nowTime === 'string' ? source.nowTime : '00:00',
     capacity: source.capacity !== null && typeof source.capacity === 'object' ? source.capacity : null,
+    // markdown 侧记录：主卡的完成要求从它来（与便贴上那一份同一口径）。
+    records: Array.isArray(source.records) ? source.records : [],
     twoMinute: source.twoMinute,
   };
 }
@@ -350,9 +353,9 @@ function cardOf(note, containerKey, containerName, context) {
     overdue: note.overdue === true,
     segment: note.segment ?? null,
     record: note.record ?? null,
-    // 完成要求由后续一票填（markdown 记录页的验收标准，或正文 `完成要求：` 前缀）；
-    // 本票只留位置，source 标出它是从哪来的。
-    requirement: { text: null, source: null },
+    // 完成要求：编号匹配到的 markdown 记录页的「验收标准」优先，否则回退正文 `完成要求：` 前缀；
+    // 单一口径在 app/lib/requirement.js（便贴上的那一份也是它算的），source 标出它是从哪来的。
+    requirement: requirementOf(note, context.records),
     // 预计耗时：null = 未估算（不是 0 分钟）。
     estimateMinutes: estimate.minutes,
     estimateSource: estimate.source,

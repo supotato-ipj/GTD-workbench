@@ -20,6 +20,7 @@ import { capacityFor } from './capacity.js';
 import { focusOf } from './focus.js';
 import { eligibilityOf, focusGuideOf } from './focus-guide.js';
 import { matchRecordNumber } from './markdown.js';
+import { requirementOf } from './requirement.js';
 import { withViolations } from './rules.js';
 import { localStampOf, sunkOf } from './sunk.js';
 import {
@@ -183,6 +184,22 @@ export function withRecord(note, records) {
 }
 
 /**
+ * 给一条便贴补上它的完成要求。
+ *
+ * 完成要求有两条来源、主次分明：编号匹配到的 markdown 记录页的「验收标准」优先，
+ * 记录页那一页没有验收标准或没匹配上时，回退正文里的 `完成要求：` 前缀；
+ * 两条都没有就是空（空说明判定没做完，不编）。
+ * **单一口径**：解析只出自 `app/lib/requirement.js` 的 `requirementOf`，便贴与行动卡共用它。
+ * @param {object} note - 便贴数据（已带 `record` 指针）。
+ * @param {object[]} records - 全部记录。
+ * @returns {object} 补了 requirement 的新便贴。
+ */
+export function withRequirement(note, records) {
+  const { text, source } = requirementOf(note, records);
+  return { ...note, requirement: { text, source } };
+}
+
+/**
  * 组装今日日清清单。
  *
  * 还开着的日清项来自快照本身；今天已经还清的日清项来自已完成的那一批
@@ -249,8 +266,11 @@ export function buildSnapshot({
   const groups = containers.map((container) => {
     const notes = sortNotes(
       (tasksByProject.get(container.projectId) ?? []).map((task) =>
-        withRecord(
-          withSegment(withViolations(noteOf(task, timeZone), container.key), todayText),
+        withRequirement(
+          withRecord(
+            withSegment(withViolations(noteOf(task, timeZone), container.key), todayText),
+            recordList,
+          ),
           recordList,
         ),
       ),
@@ -279,6 +299,8 @@ export function buildSnapshot({
     today: todayText,
     nowTime: localNow === null ? '00:00' : localNow.time,
     capacity,
+    // markdown 侧记录：主卡的完成要求与便贴上的那一份出自同一口径（app/lib/requirement.js）。
+    records: recordList,
   };
   const guide = focusGuideOf(groups, guideContext);
   const pushed = new Set(guide.pushed);
