@@ -8,15 +8,18 @@
 
 ## 当前状态
 
-搭建初期。仓库现在承载的是 agent 的工作契约与技能配置（`AGENTS.md` + `docs/agents/`），插件能力随后续 issue 逐步长出。
+工作台 v2「从六箱全景改为焦点引导器」的实施中。规格在 GitHub issue #1，子票 #2–#11。
+词表与决策记录已经归位，插件源码正在迁入本仓库。
 
 ## 目录
 
 | 路径 | 作用 |
 |---|---|
 | `AGENTS.md` | agent 在本仓库的工作方式约束（含 GitHub 隐私原则） |
+| `GLOSSARY.md` | 词表：工作台用语与 GTD 方法论词（本项目只用这一套说法） |
+| `docs/adr/` | 决策记录（ADR）：状态标记与写法见 `docs/agents/domain.md` |
 | `docs/agents/issue-tracker.md` | issue 追踪约定：GitHub Issues + `gh` CLI |
-| `docs/agents/domain.md` | 领域文档消费规则（单上下文） |
+| `docs/agents/domain.md` | 领域文档消费规则（单上下文）+ ADR 约定 |
 
 ## 隐私
 
