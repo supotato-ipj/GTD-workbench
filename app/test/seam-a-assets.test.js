@@ -7,6 +7,9 @@
  */
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 
 import { ASSETS_ROUTE_PREFIX, createAssetsHandler } from '../lib/assets.js';
@@ -104,5 +107,34 @@ test('接缝 A：目录逃逸 404——不能从素材路由读到仓库里的�
     const { status, body } = await fetchAsset(pathname);
     assert.equal(status, 404, `${pathname} 没有被拦住`);
     assert.doesNotMatch(body.toString('utf8'), /createTasksHandler/, `${pathname} 读到了源码`);
+  }
+});
+
+test('接缝 A：只发白名单类型，HEAD 不送正文（素材目录可换）', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'gtd-assets-'));
+  writeFileSync(path.join(dir, 'ok.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  writeFileSync(path.join(dir, 'note.html'), '<html></html>');
+  try {
+    const handler = createAssetsHandler({ assetRoot: dir });
+    const result = await withRoute(handler, async (baseUrl) => {
+      const ok = await fetch(`${baseUrl}${ASSETS_ROUTE_PREFIX}/ok.png`);
+      const html = await fetch(`${baseUrl}${ASSETS_ROUTE_PREFIX}/note.html`);
+      const head = await fetch(`${baseUrl}${ASSETS_ROUTE_PREFIX}/ok.png`, { method: 'HEAD' });
+      return {
+        okStatus: ok.status,
+        okType: ok.headers.get('content-type'),
+        htmlStatus: html.status,
+        headStatus: head.status,
+        headLength: (await head.arrayBuffer()).byteLength,
+      };
+    });
+    assert.equal(result.okStatus, 200);
+    assert.equal(result.okType, 'image/png');
+    // HTML 不在白名单里：素材路由不是通用静态文件服务器。
+    assert.equal(result.htmlStatus, 404);
+    assert.equal(result.headStatus, 200);
+    assert.equal(result.headLength, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

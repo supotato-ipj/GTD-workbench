@@ -141,7 +141,8 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 
 | 文件 | 作用 |
 |---|---|
-| `index.js` | Host 半边：`ctx.effect` 里用 `ctx.webServer.register` 开一条本机路由，挂上三个依赖 |
+| `index.js` | Host 半边：`ctx.effect` 里用 `ctx.webServer.register` 开两条本机路由（读／写）与一条**素材前缀路由**，挂上三个依赖 |
+| `lib/assets.js` | 工位素材的前缀路由：点阵字体、桌面场景、纸纹；只发白名单类型，越界／未知／目录一律 404 |
 | `client.js` | Client 半边：左栏图标 + 主区面板（**外壳**与**视图**两层，`React.createElement`，不引构建步骤） |
 | `lib/containers.js` | 六个纸箱与滴答清单 id（用完整 24 位 id） |
 | `lib/config.js` | 本地私有配置 `local-config.json` 的只读读取（记录目录 / 容量参数 / 滴答清单 id） |
@@ -207,10 +208,10 @@ ADR-0012 有修订节）画成一个**像素工位**：微俯视角，一张桌�
 | 位置 | DOM 角色 | 内容 |
 |---|---|---|
 | **工位根** | `gtd-desk`（`data-scale`／`data-layout`／`data-art-width`／`data-art-height`／`data-card-width`、`--gtd-u`） | 暗房间、桌面与所有桌面物件；自带色板与点阵字体 |
-| 暗房间与桌面 | `gtd-desk-room` / `gtd-desk-tabletop` | 墙（上方约三分之一）与桌面（下方约三分之二）；宽窗多出来的空间由暗房间延伸填满 |
+| 暗房间与桌面 | `gtd-desk-room` / `gtd-desk-tabletop` | 墙（上方约三分之一）与桌面（下方约三分之二）；横向多出来的空间由暗房间／桌面延伸填满，纵向多出来的高度归上方的暗房间，场景贴着画面底边 |
 | 桌面场景 | `gtd-desk-scene` | 随包的 600×420 像素场景（台灯、熄屏显示器、杯子、笔筒、桌面阴影）；卡是 DOM，不在图里 |
 | 台灯与深度名额 | `gtd-desk-lamp` / `gtd-desk-quota`（含 `focus-stat[data-stat="deep-quota"]`） | 灯座上一枚方形指示块：用掉就熄灭；数值仍带 `data-used` / `data-total` |
-| 桌左小屏 | `gtd-desk-screen` | **预计耗时** `focus-card-estimate`、**装不装得下** `focus-card-capacity`（`data-state="fits｜no｜unknown"`）、**剩余可排时间** `focus-stat[data-stat="remaining"]`；卡上不再写耗时与容量（ADR-0012 修订 2） |
+| 桌左小屏 | `gtd-desk-screen` | 日期 `gtd-desk-screen-date`、**预计耗时** `focus-card-estimate`、**装不装得下** `focus-card-capacity`（`data-state="fits｜no｜unknown"`，只说装不装得下）、**可排多少分钟** `focus-stat[data-stat="remaining"]`；卡上不再写耗时与容量，「剩余」这个数只在这一行出现一次（ADR-0012 修订 2） |
 | 行动卡（主位） | `focus-card`（`data-note-ref`） | 竖版纸卡：标题 `focus-card-title` / `focus-card-open`、时限标签 `focus-card-due`（逾期另标 `focus-card-overdue`）、完成要求 `focus-card-requirement`（来源 `focus-card-requirement-source`）、写口 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入）／`focus-card-skip-note`、卡脚 `focus-card-foot`（项目名 + 入口）。两分钟卡另贴一张小纸条 `focus-card-two-minute` |
 | 卡夹（原「接下来」） | `gtd-desk-holder` / `focus-next` / `focus-next-item`（`data-note-ref`） | 立式卡夹，每张只露标题与时限；**点一张抽到主位**（视图内状态，零写入） |
 | 便签叠（今日日清） | `gtd-desk-notes` / `focus-stat[data-stat="daily"]` | 一叠未还的日清便签；`focus-capacity-bar` 里的「容量参数定于 <日期>」（`focus-capacity-asof`，未初始化 `data-state="unset"`）与「窗口外那笔日清不占可排时间」（`focus-capacity-outside`）收在叠里，**点开才看见** |
@@ -223,6 +224,9 @@ ADR-0012 有修订节）画成一个**像素工位**：微俯视角，一张桌�
 
 - **Client 只画不算**：资格、排序、容量、可排时间、主卡与队列的内容全部来自快照
   （`focus.card`／`focus.next`／`today.*`／`capacity.*`），这一层不重算任何一个。
+- **旧顶部常驻条 `focus-top` 这个容器不再有**：它本身就是「仪表盘」，三个读数已经被拆到
+  便签叠／小屏／灯座指示块上；三项 `focus-stat` 叶子角色保留。卡片里的
+  `focus-card-facts`／`focus-card-fact` 也保留（少了估算与容量两行，它们在小屏上）。
 - **缺字段就少一行，不整卡消失**：完成要求缺失 → 那一行不画；预计耗时为 `null` → 小屏写「未估算」
   （不是「0 分钟」）；容量提示的 `fits` 为 `null` → 不装作知道装不装得下。
 - **主卡是桌上的一张纸卡**：纸色 + 随包的纸纹素材 + 左侧灯照的一档亮边。
@@ -255,8 +259,12 @@ ADR-0012 有修订节）画成一个**像素工位**：微俯视角，一张桌�
 - **一个美术像素 = `scale` 个设备像素**：`deskGeometryOf` 先试 3、再 2、最后 1，
   `--gtd-u` = `scale / devicePixelRatio`（CSS px）。字号只有 12 与 24 两个美术像素台阶，
   所以 `字号 × devicePixelRatio` 总是 12 的整数倍（点阵字不落半像素）。
-- **版面**：宽窗多出来的空间由暗房间与桌面延伸填满，不出黑边；窗口比 600×420 还窄时
-  （`data-layout="narrow"`）先把卡加宽，而不是把字号压到 12 以下。
+- **版面**：宽窗多出来的横向空间由暗房间与桌面延伸填满，不出黑边；纵向多出来的高度归上方的暗房间，
+  场景（含桌沿标牌）贴着画面底边。缩放置数按**纵向内容带**（台灯/显示器顶部到桌沿标牌底部，44–414 美术像素）
+  算，所以上面那截暗房间可以裁掉一点，桌面与桌沿不会被裁。
+- **窄窗**：窗口比 600 美术像素还窄时（`data-layout="narrow"`），先把卡加宽、让出桌左小屏那一列；
+  卡夹／便签叠／小旗收起来（换卡仍可左右划），桌沿三件套（标牌／抽屉／开关）按可见宽度重新排。
+  不把字号压到 12 以下。
 - **长标题**：卡内宽 180 美术像素，标题最多三行（`-webkit-line-clamp: 3`），
   完整标题在 `title` 与 `aria-label` 上，抽屉里能读到全文。
 

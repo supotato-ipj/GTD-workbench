@@ -90,6 +90,8 @@ test('工位：既有焦点视图的 DOM 角色全部保住（卡、卡夹、提
       'focus-card',
       'focus-card-title',
       'focus-card-open',
+      'focus-card-facts',
+      'focus-card-fact',
       'focus-card-due',
       'focus-card-requirement',
       'focus-card-requirement-source',

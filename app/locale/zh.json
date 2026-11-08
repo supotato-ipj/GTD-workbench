@@ -89,7 +89,7 @@
   "focusRescheduleRefreshFailed": "已改期，但刷新失败",
   "focusSkipLabel": "跳过",
   "focusSkipNote": "零写入",
-  "focusSkipNotice": "已跳过：本次会话里它不再出现在焦点里，刷新页面会回来",
+  "focusSkipNotice": "已跳过：它被插回卡夹末尾，零写入；刷新页面回到原位",
   "focusDrillEntry": "打开六箱全景",
   "focusDrillTitle": "六箱全景",
   "focusBackLabel": "回到焦点",
@@ -112,5 +112,14 @@
   "boxCompletions": "完成",
   "boxCompletionsHint": "最近七天这个纸箱里勾完的条数",
   "focusNotesHint": "点开看参数",
-  "focusReminderFlag": "等回 {count}"
+  "focusReminderFlag": "等回 {count}",
+  "focusScreenAvailable": "可排",
+  "weekdaySun": "周日",
+  "weekdayMon": "周一",
+  "weekdayTue": "周二",
+  "weekdayWed": "周三",
+  "weekdayThu": "周四",
+  "weekdayFri": "周五",
+  "weekdaySat": "周六",
+  "focusScreenEmpty": "桌上是空的"
 }

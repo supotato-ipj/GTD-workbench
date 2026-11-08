@@ -172,6 +172,8 @@ test('质感：工位子树反过来——自带色板与字体，不借宿主�
   assert.match(deskStyles, /font-family:\s*'GtdPixelFusion',\s*'Ark Pixel 12px'/);
   assert.match(deskStyles, /var\(--gtd-paper\)/);
   assert.match(deskStyles, /var\(--gtd-screen-ink\)/);
+  // 工位 CSS 里不再有写死的颜色：色值只在工位根上的自定义属性里定义一次。
+  assert.doesNotMatch(deskStyles, /#[0-9a-fA-F]{3,8}\b|rgba?\(/, '工位 CSS 里还有写死的颜色');
 });
 
 test('质感：便贴与纸箱分成两层，标题读得出来', () => {

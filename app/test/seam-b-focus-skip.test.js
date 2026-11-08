@@ -82,7 +82,7 @@ test('焦点视图：点「跳过」零请求零写入——这条只活在本�
   }
 });
 
-test('焦点视图：跳过后主卡换下一件，那一条也不再出现在「接下来」里', async () => {
+test('焦点视图：跳过后主卡换下一件，那一条插到卡夹末尾', async () => {
   const snapshot = await focusSnapshotUnderTest();
   const controller = createFetchController();
   const panel = await mountPanel({ clientPath, props: { initialSnapshot: snapshot }, fetchImpl: controller.fetchImpl });
@@ -98,11 +98,13 @@ test('焦点视图：跳过后主卡换下一件，那一条也不再出现在�
     const queue = [...panel.document.querySelectorAll('[data-role="focus-next-item"]')].map((node) =>
       node.getAttribute('data-note-ref'),
     );
-    assert.ok(!queue.includes(skippedId), '跳过的这条还在「接下来」里');
-    assert.equal(queue.length, snapshot.focus.next.length - 1, '「接下来」的条数不对');
+    // 跳过 = 插回卡夹末尾（故事 14），不是从焦点里消失。
+    assert.equal(queue[queue.length - 1], skippedId, '跳过的这条没有插到卡夹末尾');
+    assert.equal(queue.length, snapshot.focus.next.length, '卡夹的条数不对');
     // 跳过之后说清楚它去哪了。
     const notice = panel.document.querySelector('[data-role="focus-skip-notice"]');
     assert.ok(notice, '跳过之后没有交代它去哪了');
+    assert.match(notice.textContent, /卡夹末尾/);
   } finally {
     await panel.cleanup();
   }

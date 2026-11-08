@@ -17,13 +17,13 @@ import { fileURLToPath } from 'node:url';
 export const ASSETS_ROUTE_PREFIX = '/gtd-workbench/assets';
 
 /** 素材根目录：随包发的 `app/assets/`。 */
-export const DEFAULT_ASSET_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'assets');
+const DEFAULT_ASSET_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'assets');
 
 /**
  * 允许送的素材类型。**白名单**：扩展名不在这里的一律 404——
  * 这条路由只负责素材，不是通用静态文件服务器。
  */
-export const ASSET_CONTENT_TYPES = {
+const ASSET_CONTENT_TYPES = {
   '.woff2': 'font/woff2',
   '.png': 'image/png',
   '.txt': 'text/plain; charset=utf-8',
@@ -48,7 +48,7 @@ function notFound(res) {
  * @param {string} root - 素材根目录的绝对路径。
  * @returns {string | null} 文件路径；不合法时为 null。
  */
-export function resolveAssetPath(pathname, root) {
+function resolveAssetPath(pathname, root) {
   if (typeof pathname !== 'string' || !pathname.startsWith(`${ASSETS_ROUTE_PREFIX}/`)) return null;
   let relative;
   try {

@@ -92,7 +92,7 @@ test('焦点视图：没有日清落在窗口之外时，顶部不多说这一�
   }
 });
 
-test('焦点视图：卡面容量提示说清装不装得下，还剩多少分钟', async () => {
+test('焦点视图：小屏说清装不装得下；剩余时间只在「可排」这一行出现一次', async () => {
   const snapshot = await focusSnapshotUnderTest();
   const cases = [
     { fits: true, state: '装得下' },
@@ -111,11 +111,13 @@ test('焦点视图：卡面容量提示说清装不装得下，还剩多少分�
     });
     try {
       const capacity = env.document.querySelector('[data-role="focus-card-capacity"]');
-      assert.ok(capacity, '卡上没有容量提示');
+      assert.ok(capacity, '小屏上没有容量提示');
       assert.equal(capacity.getAttribute('data-state'), item.fits === true ? 'fits' : item.fits === false ? 'no' : 'unknown');
       assert.match(capacity.textContent, new RegExp(item.state));
-      // 剩余多少分钟始终说清楚（不知道装不装得下时也要说）。
-      assert.match(capacity.textContent, /90/);
+      // 剩余可排时间只在「可排」这一行出现一次（ADR-0012 修订 2 的「一个数不出现两遍」）。
+      const remaining = env.document.querySelector('[data-role="focus-stat"][data-stat="remaining"]');
+      assert.match(remaining.textContent, new RegExp(String(snapshot.today.remainingMinutes)));
+      assert.doesNotMatch(capacity.textContent, new RegExp(String(snapshot.today.remainingMinutes)));
     } finally {
       await env.unmount();
     }

@@ -89,7 +89,7 @@
   "focusRescheduleRefreshFailed": "Rescheduled, but refreshing failed",
   "focusSkipLabel": "Skip",
   "focusSkipNote": "no writes",
-  "focusSkipNotice": "Skipped: it stays out of focus for this session and comes back after a reload",
+  "focusSkipNotice": "Skipped: it goes to the back of the card holder with no writes; a reload puts it back",
   "focusDrillEntry": "Open the six-box panorama",
   "focusDrillTitle": "Six-box panorama",
   "focusBackLabel": "Back to focus",
@@ -112,5 +112,14 @@
   "boxCompletions": "Done",
   "boxCompletionsHint": "Completed in this box over the last seven days",
   "focusNotesHint": "Tap to see the settings",
-  "focusReminderFlag": "Awaiting {count}"
+  "focusReminderFlag": "Awaiting {count}",
+  "focusScreenAvailable": "Left",
+  "weekdaySun": "Sun",
+  "weekdayMon": "Mon",
+  "weekdayTue": "Tue",
+  "weekdayWed": "Wed",
+  "weekdayThu": "Thu",
+  "weekdayFri": "Fri",
+  "weekdaySat": "Sat",
+  "focusScreenEmpty": "The desk is empty"
 }

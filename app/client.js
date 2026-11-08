@@ -81,6 +81,17 @@ window.__ModuleLoader__.load({
       focusDailyLabel: '今日日清',
       focusDailyUndone: '未还',
       focusRemainingLabel: '剩余可排时间',
+      /** 桌左小屏上「可排 X 分钟」的短标签（剩余可排时间只在这行出现一次）。 */
+      focusScreenAvailable: '可排',
+      /** 小屏的空态（卡上已经写着「现在没有该做的事」，这里不重复同一句）。 */
+      focusScreenEmpty: '桌上是空的',
+      weekdaySun: '周日',
+      weekdayMon: '周一',
+      weekdayTue: '周二',
+      weekdayWed: '周三',
+      weekdayThu: '周四',
+      weekdayFri: '周五',
+      weekdaySat: '周六',
       focusMinutesUnit: '分钟',
       focusQuotaLabel: '深度名额',
       focusCapacityAsOf: '容量参数定于',
@@ -126,7 +137,7 @@ window.__ModuleLoader__.load({
       /* v2:write 跳过（issue #10）：零写入的纯视图状态。 */
       focusSkipLabel: '跳过',
       focusSkipNote: '零写入',
-      focusSkipNotice: '已跳过：本次会话里它不再出现在焦点里，刷新页面会回来',
+      focusSkipNotice: '已跳过：它被插回卡夹末尾，零写入；刷新页面回到原位',
       focusDrillEntry: '打开六箱全景',
       focusDrillTitle: '六箱全景',
       focusBackLabel: '回到焦点',
@@ -203,6 +214,15 @@ window.__ModuleLoader__.load({
       focusDailyLabel: 'Daily today',
       focusDailyUndone: 'open',
       focusRemainingLabel: 'Remaining schedulable time',
+      focusScreenAvailable: 'Left',
+      focusScreenEmpty: 'The desk is empty',
+      weekdaySun: 'Sun',
+      weekdayMon: 'Mon',
+      weekdayTue: 'Tue',
+      weekdayWed: 'Wed',
+      weekdayThu: 'Thu',
+      weekdayFri: 'Fri',
+      weekdaySat: 'Sat',
       focusMinutesUnit: 'min',
       focusQuotaLabel: 'Deep-work slots',
       focusCapacityAsOf: 'Capacity parameters set on',
@@ -244,7 +264,7 @@ window.__ModuleLoader__.load({
       focusRescheduleRefreshFailed: 'Rescheduled, but refreshing failed',
       focusSkipLabel: 'Skip',
       focusSkipNote: 'no writes',
-      focusSkipNotice: 'Skipped: it stays out of focus for this session and comes back after a reload',
+      focusSkipNotice: 'Skipped: it goes to the back of the card holder with no writes; a reload puts it back',
       focusDrillEntry: 'Open the six-box panorama',
       focusDrillTitle: 'Six-box panorama',
       focusBackLabel: 'Back to focus',
@@ -1456,6 +1476,20 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 把一份失败描述拍成呈现层要的三样：类别、人能读的原因、是不是未登录。
+     *
+     * 失败面板与工位上的失败纸条共用这一处口径，别让两边各判一次。
+     * @param {unknown} error - 失败描述。
+     * @returns {{ code: string, message: string, needsLogin: boolean }} 呈现用的失败信息。
+     */
+    function failureInfoOf(error) {
+      const base = error !== null && typeof error === 'object' ? error : {};
+      const code = typeof base.code === 'string' && base.code.length > 0 ? base.code : 'unknown';
+      const message = typeof base.message === 'string' ? base.message : '';
+      return { code, message, needsLogin: code === 'not-authenticated' };
+    }
+
+    /**
      * 失败面板：把「未登录」和「别的失败」说得不一样。
      *
      * 未登录给去登录的命令，别的失败给失败原因。两种情况都不画空板。
@@ -1464,10 +1498,7 @@ window.__ModuleLoader__.load({
      */
     function WorkbenchFailure(props) {
       const t = props.t;
-      const error = props.error !== null && typeof props.error === 'object' ? props.error : {};
-      const code = typeof error.code === 'string' && error.code.length > 0 ? error.code : 'unknown';
-      const message = typeof error.message === 'string' ? error.message : '';
-      const needsLogin = code === 'not-authenticated';
+      const { code, message, needsLogin } = failureInfoOf(props.error);
       return h(
         'div',
         {
@@ -1995,6 +2026,19 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 视图切换的两位：画布／焦点。角色名与顺序只在这里排一次，
+     * 网页标题栏里的那对按钮和桌沿标牌共用它，免得两边各写一份。
+     * @param {(key: string) => string} t - 翻译函数。
+     * @returns {{ key: string, label: string }[]} 两项。
+     */
+    function viewSwitchEntries(t) {
+      return [
+        { key: VIEW_MODE.CANVAS, label: textOf(t, 'viewCanvasLabel', '六箱画布') },
+        { key: VIEW_MODE.FOCUS, label: textOf(t, 'viewFocusLabel', '焦点视图') },
+      ];
+    }
+
+    /**
      * 六箱画布视图：v1 的版面原样搬过来。
      *
      * **不套任何 DOM 元素**（用 Fragment 返回）：画布这一段的 DOM 层级与拆分前完全一致，
@@ -2038,33 +2082,33 @@ window.__ModuleLoader__.load({
     function ViewSwitcher(props) {
       const t = props.t;
       const mode = props.mode === VIEW_MODE.FOCUS ? VIEW_MODE.FOCUS : VIEW_MODE.CANVAS;
-      const button = (key, label) =>
+      const button = (entry) =>
         h(
           'button',
           {
             type: 'button',
-            'data-role': `view-switch-${key}`,
-            'data-active': mode === key ? 'true' : 'false',
-            onClick: () => props.onChange(key),
+            key: entry.key,
+            'data-role': `view-switch-${entry.key}`,
+            'data-active': mode === entry.key ? 'true' : 'false',
+            onClick: () => props.onChange(entry.key),
             style: {
               padding: '2px 10px',
-              border: '1px solid ' + (mode === key ? 'var(--dsw-alias-border-l3)' : 'transparent'),
+              border: '1px solid ' + (mode === entry.key ? 'var(--dsw-alias-border-l3)' : 'transparent'),
               borderRadius: 'var(--dsw-radius-md)',
-              background: mode === key ? 'var(--dsw-alias-bg-module-platform)' : 'transparent',
-              color: mode === key ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)',
+              background: mode === entry.key ? 'var(--dsw-alias-bg-module-platform)' : 'transparent',
+              color: mode === entry.key ? 'var(--dsw-alias-label-primary)' : 'var(--dsw-alias-label-secondary)',
               font: 'inherit',
               fontSize: '12px',
               lineHeight: '19px',
               cursor: 'pointer',
             },
           },
-          label,
+          entry.label,
         );
       return h(
         'div',
         { 'data-role': 'view-switch', 'data-view': mode, style: { display: 'flex', gap: '4px' } },
-        button(VIEW_MODE.CANVAS, textOf(t, 'viewCanvasLabel', '六箱画布')),
-        button(VIEW_MODE.FOCUS, textOf(t, 'viewFocusLabel', '焦点视图')),
+        viewSwitchEntries(t).map(button),
       );
     }
     /* v2:shell end */
@@ -2091,6 +2135,10 @@ window.__ModuleLoader__.load({
     const DESK_ART = {
       width: 600,
       height: 420,
+      /* 纵向内容带：从台灯/显示器顶部到桌沿标牌底部。缩放置数按它算——
+         上方多出来的暗房间可以裁，桌面与桌沿不能裁。 */
+      contentTop: 44,
+      contentBottom: 414,
       card: { x: 210, y: 90, width: 200, height: 280, centerX: 310, maxWidth: 280 },
       screen: { x: 24, y: 250, width: 150, height: 84 },
       holder: { x: 415, y: 152, width: 175, height: 120 },
@@ -2129,22 +2177,49 @@ window.__ModuleLoader__.load({
       '--gtd-ink': '#221d16',
       '--gtd-ink-dim': '#6b6150',
       '--gtd-warm': '#ffd9a0',
-      '--gtd-warm-dim': '#e8b46a',
       '--gtd-stamp': '#a63f2e',
+      '--gtd-card-edge': '#14110c',
+      '--gtd-lamp-base': '#20242d',
+      '--gtd-lamp-edge': '#39404e',
+      '--gtd-ink-mute': '#6a6154',
+      '--gtd-holder-dim': '#8d8577',
+      '--gtd-notes-shadow-1': '#cfc5ac',
+      '--gtd-notes-shadow-2': '#b9af96',
       '--gtd-screen': '#101319',
       '--gtd-screen-edge': '#3b4250',
       '--gtd-screen-ink': '#e6c98c',
       '--gtd-screen-dim': '#9aa2b2',
       '--gtd-screen-bad': '#e08c74',
+      '--gtd-screen-strong': '#f2e9d6',
       '--gtd-holder': '#17130e',
       '--gtd-holder-edge': '#3a3226',
       '--gtd-notes': '#e4dbc4',
       '--gtd-notes-edge': '#14110c',
       '--gtd-flag': '#b4462f',
       '--gtd-flag-edge': '#6d2a20',
+      '--gtd-flag-ink': '#f6ecd9',
+      '--gtd-flag-pole': '#6a6154',
       '--gtd-plaque': '#1f232c',
       '--gtd-plaque-edge': '#3a3f4c',
+      '--gtd-plaque-ink': '#b9b0a0',
+      '--gtd-plaque-active': '#333946',
+      '--gtd-plaque-ink-active': '#f2e9d6',
       '--gtd-power': '#1b1f27',
+      '--gtd-power-hover': '#262b35',
+      '--gtd-drawer': '#241d15',
+      '--gtd-drawer-edge': '#4a3f2e',
+      '--gtd-drawer-ink': '#9a8f7c',
+      '--gtd-drawer-hover': '#2e2519',
+      '--gtd-drawer-hover-ink': '#cfc3ad',
+      '--gtd-highlight': 'rgba(255, 255, 255, 0.4)',
+      '--gtd-highlight-dim': 'rgba(255, 255, 255, 0.05)',
+      '--gtd-shadow-hard': 'rgba(0, 0, 0, 0.45)',
+      '--gtd-shadow-card': 'rgba(0, 0, 0, 0.5)',
+      '--gtd-shadow-note': 'rgba(0, 0, 0, 0.35)',
+      '--gtd-ink-line': 'rgba(34, 29, 22, 0.25)',
+      '--gtd-light-strong': 'rgba(255, 206, 138, 0.16)',
+      '--gtd-light-mid': 'rgba(255, 206, 138, 0.1)',
+      '--gtd-light-soft': 'rgba(255, 206, 138, 0.05)',
     };
 
     /**
@@ -2171,9 +2246,13 @@ window.__ModuleLoader__.load({
       const width = positiveNumber(input === null || input === undefined ? undefined : input.width, 1024);
       const height = positiveNumber(input === null || input === undefined ? undefined : input.height, 768);
       const dpr = positiveNumber(input === null || input === undefined ? undefined : input.dpr, 1);
+      const contentHeight = DESK_ART.contentBottom - DESK_ART.contentTop;
       let scale = 1;
       for (const candidate of [3, 2, 1]) {
-        if (DESK_ART.width * candidate <= width * dpr && DESK_ART.height * candidate <= height * dpr) {
+        if (
+          DESK_ART.width * candidate <= width * dpr &&
+          contentHeight * candidate <= height * dpr
+        ) {
           scale = candidate;
           break;
         }
@@ -2182,23 +2261,31 @@ window.__ModuleLoader__.load({
       const viewWidth = Math.max(1, Math.floor(width / unit));
       const viewHeight = Math.max(1, Math.floor(height / unit));
       const boardWidth = Math.max(DESK_ART.width, viewWidth);
-      const boardHeight = Math.max(DESK_ART.height, viewHeight);
+      /* 场景靠下：标牌底部贴着画面底边；上方多出来的空间归暗房间（可以裁掉一点顶）。 */
+      const originY = viewHeight - DESK_ART.contentBottom;
       const narrow = viewWidth < DESK_ART.width;
       /* 整组物件以卡为中心：宽窗多出来的暗房间往两边铺，窄窗把看不见的两侧裁掉。 */
       const originX = Math.floor((narrow ? viewWidth : boardWidth) / 2 - DESK_ART.width / 2);
+      /* 窄窗：先让出桌左小屏那一列，再把剩下的宽度全给卡（不把字号压到 12 以下）。 */
       const cardWidth = narrow
-        ? Math.min(DESK_ART.card.maxWidth, Math.max(DESK_ART.card.width, Math.floor((viewWidth - 40) / 2) * 2))
+        ? Math.min(DESK_ART.card.maxWidth, Math.max(DESK_ART.card.width, viewWidth - 174))
         : DESK_ART.card.width;
+      const cardLeft = narrow
+        ? Math.max(166, Math.floor(viewWidth / 2 - cardWidth / 2))
+        : DESK_ART.card.centerX + originX - Math.floor(cardWidth / 2);
       return {
         scale,
         unit,
         dpr,
+        viewWidth,
+        viewHeight,
         boardWidth,
-        boardHeight,
+        boardHeight: DESK_ART.height,
         originX,
+        originY,
         narrow,
         cardWidth,
-        cardLeft: DESK_ART.card.centerX + originX - Math.floor(cardWidth / 2),
+        cardLeft,
       };
     }
 
@@ -2298,11 +2385,47 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 容量判定只剩三种：装得下 / 装不下 / 不知道。Host 说 `null` 就是不知道，别猜。
+     * @param {unknown} hint - 卡的 `capacityHint`。
+     * @returns {boolean | null} 三态。
+     */
+    function fitsOf(hint) {
+      if (hint === null || typeof hint !== 'object') return null;
+      return hint.fits === true ? true : hint.fits === false ? false : null;
+    }
+
+    /**
+     * 容量判定的文案。
+     * @param {boolean | null} fits - 三态。
+     * @param {(key: string) => string} t - 翻译函数。
+     * @returns {string} 文案。
+     */
+    function capacityWordOf(fits, t) {
+      return fits === true ? t('focusCapacityFits') : fits === false ? t('focusCapacityNoFit') : t('focusCapacityUnknown');
+    }
+
+    /**
+     * 桌左小屏的日期行：`11-05 周四`（日期来自快照的 `timeline.today`，星期只是呈现）。
+     * @param {unknown} dateText - `YYYY-MM-DD`。
+     * @param {(key: string) => string} t - 翻译函数。
+     * @returns {string} 日期行。
+     */
+    function deskDateText(dateText, t) {
+      const matched = typeof dateText === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText) : null;
+      if (matched === null) return typeof dateText === 'string' ? dateText : '';
+      const parsed = new Date(`${dateText}T00:00:00`);
+      if (Number.isNaN(parsed.getTime())) return `${matched[2]}-${matched[3]}`;
+      const weekdays = ['weekdaySun', 'weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat'];
+      return `${matched[2]}-${matched[3]} ${t(weekdays[parsed.getDay()])}`;
+    }
+
+    /**
      * 桌左小屏：这张卡装不装得下、还剩多少可排时间。
      *
-     * 卡上不再写耗时与容量（ADR-0012 修订 2）——它们在这里，和「今天还剩多少」并排。
-     * 「一个数只出现一次」仍然成立：卡上只有时限标签。
-     * @param {object} props - props：`card`、`today`、`t`。
+     * 卡上不再写耗时与容量（ADR-0012 修订 2）——它们在这里，和「今天还剩多少」并排：
+     * 日期 / 预计耗时 / 装不装得下 / 可排多少分钟。「一个数只出现一次」仍然成立：
+     * 剩余可排时间只在「可排」这一行，容量那一行只说装不装得下。
+     * @param {object} props - props：`card`、`today`、`timelineToday`、`t`。
      * @returns {object} React 元素。
      */
     function DeskScreen(props) {
@@ -2317,13 +2440,28 @@ window.__ModuleLoader__.load({
       const hint = card !== null && card.capacityHint !== null && typeof card.capacityHint === 'object' ? card.capacityHint : null;
 
       const lines = [];
+      const dateText = deskDateText(props.timelineToday, t);
+      if (dateText.length > 0) {
+        lines.push(
+          h(
+            'div',
+            {
+              key: 'date',
+              className: 'gtd-desk__screen-line gtd-desk__screen-dim',
+              'data-role': 'gtd-desk-screen-date',
+              style: deskText(12, 16),
+            },
+            dateText,
+          ),
+        );
+      }
       if (card === null) {
         lines.push(
           h('div', {
             key: 'empty',
             className: 'gtd-desk__screen-line gtd-desk__screen-dim',
             style: deskText(12, 16),
-          }, t('focusCardEmpty')),
+          }, props.pending === true ? t('focusViewPending') : t('focusScreenEmpty')),
         );
       } else {
         /* 预计耗时：未估算是 null，不是 0 分钟（README「预计耗时」）。 */
@@ -2344,21 +2482,8 @@ window.__ModuleLoader__.load({
           ),
         );
         if (hint !== null) {
-          const fits = hint.fits === true ? true : hint.fits === false ? false : null;
-          const state =
-            fits === true
-              ? t('focusCapacityFits')
-              : fits === false
-                ? t('focusCapacityNoFit')
-                : t('focusCapacityUnknown');
-          const remainingHint = minutesOf(hint.remainingMinutes);
-          const note =
-            estimate === null
-              ? fillTemplate(t('focusCapacityNoteUnknown'), { minutes: remainingHint })
-              : fillTemplate(
-                  fits === false ? t('focusCapacityNoteNoFits') : t('focusCapacityNoteFits'),
-                  { minutes: remainingHint, estimate },
-                );
+          const fits = fitsOf(hint);
+          const state = capacityWordOf(fits, t);
           lines.push(
             h(
               'div',
@@ -2377,11 +2502,6 @@ window.__ModuleLoader__.load({
                 },
                 state,
               ),
-              h(
-                'span',
-                { className: 'gtd-desk__screen-dim', 'data-role': 'focus-card-capacity-note' },
-                ` · ${note}`,
-              ),
             ),
           );
         }
@@ -2396,7 +2516,7 @@ window.__ModuleLoader__.load({
             'data-stat': 'remaining',
             style: deskText(12, 16),
           },
-          h('span', { className: 'gtd-desk__screen-dim', 'data-role': 'focus-stat-label' }, `${t('focusRemainingLabel')} `),
+          h('span', { className: 'gtd-desk__screen-dim', 'data-role': 'focus-stat-label' }, `${t('focusScreenAvailable')} `),
           h(
             'span',
             {
@@ -2415,7 +2535,12 @@ window.__ModuleLoader__.load({
           className: 'gtd-desk__screen',
           'data-role': 'gtd-desk-screen',
           'aria-label': t('focusRemainingLabel'),
-          style: deskBox(DESK_ART.screen.x, DESK_ART.screen.y, DESK_ART.screen.width, DESK_ART.screen.height),
+          style: deskBox(
+            props.geometry.narrow ? 8 : DESK_ART.screen.x + props.geometry.originX,
+            DESK_ART.screen.y + props.geometry.originY,
+            DESK_ART.screen.width,
+            DESK_ART.screen.height,
+          ),
         },
         lines,
       );
@@ -2426,7 +2551,7 @@ window.__ModuleLoader__.load({
      *
      * 「容量参数定于某日」「窗口外那笔日清不占可排时间」两句收在里面，点开才看见
      * （ADR-0012 决定 6）。点开只是视图内状态，不写任何东西。
-     * @param {object} props - props：`today`、`capacity`、`t`、`open`、`onToggle`、`originX`。
+     * @param {object} props - props：`today`、`capacity`、`t`、`open`、`onToggle`、`geometry`（版面与 `--gtd-u` 的来源）。
      * @returns {object} React 元素。
      */
     function DeskNotes(props) {
@@ -2457,8 +2582,8 @@ window.__ModuleLoader__.load({
             }
           },
           style: deskBox(
-            DESK_ART.notes.x + props.originX,
-            DESK_ART.notes.y,
+            DESK_ART.notes.x + props.geometry.originX,
+            DESK_ART.notes.y + props.geometry.originY,
             DESK_ART.notes.width,
             DESK_ART.notes.height,
           ),
@@ -2521,7 +2646,7 @@ window.__ModuleLoader__.load({
      * 深度名额：灯座上一枚方形指示块（用掉就熄灭）。
      *
      * 数值仍然带可断言的 `data-used` / `data-total`，视觉上只是一块亮/暗。
-     * @param {object} props - props：`today`、`capacity`、`t`、`originX`。
+     * @param {object} props - props：`today`、`capacity`、`t`、`geometry`。
      * @returns {object} React 元素。
      */
     function DeskQuota(props) {
@@ -2539,8 +2664,8 @@ window.__ModuleLoader__.load({
           'data-on': quotaUsed > 0 ? '1' : '0',
           'aria-label': `${t('focusQuotaLabel')} ${quotaUsed}/${quotaTotal}`,
           style: deskBox(
-            DESK_ART.quota.x + props.originX,
-            DESK_ART.quota.y,
+            DESK_ART.quota.x + props.geometry.originX,
+            DESK_ART.quota.y + props.geometry.originY,
             DESK_ART.quota.width,
             DESK_ART.quota.height,
           ),
@@ -2573,7 +2698,7 @@ window.__ModuleLoader__.load({
      *
      * 桌上只插一面旗，旗面写「等回 N」；点开才列是哪几条（用户 2026-11-08 裁定）。
      * 它不占主位，也不写入任何东西。
-     * @param {object} props - props：`reminders`、`t`、`open`、`onToggle`、`originX`。
+     * @param {object} props - props：`reminders`、`t`、`open`、`onToggle`、`geometry`。
      * @returns {object} React 元素或 null。
      */
     function DeskFlag(props) {
@@ -2587,7 +2712,7 @@ window.__ModuleLoader__.load({
           className: 'gtd-desk__flag',
           'data-role': 'gtd-desk-flag',
           'data-state': open ? 'open' : 'closed',
-          style: deskBox(DESK_ART.flag.x + props.originX, DESK_ART.flag.y, DESK_ART.flag.width, DESK_ART.flag.height),
+          style: deskBox(DESK_ART.flag.x + props.geometry.originX, DESK_ART.flag.y + props.geometry.originY, DESK_ART.flag.width, DESK_ART.flag.height),
         },
         h(
           'button',
@@ -2650,24 +2775,24 @@ window.__ModuleLoader__.load({
     function DeskViewSwitch(props) {
       const t = props.t;
       const mode = props.mode === VIEW_MODE.CANVAS ? VIEW_MODE.CANVAS : VIEW_MODE.FOCUS;
-      const plaque = (key, label) =>
+      const plaque = (entry) =>
         h(
           'button',
           {
             type: 'button',
+            key: entry.key,
             className: 'gtd-desk__plaque',
-            'data-role': `view-switch-${key}`,
-            'data-active': mode === key ? 'true' : 'false',
-            onClick: () => props.onChange(key),
+            'data-role': `view-switch-${entry.key}`,
+            'data-active': mode === entry.key ? 'true' : 'false',
+            onClick: () => props.onChange(entry.key),
             style: deskText(12, 18),
           },
-          label,
+          entry.label,
         );
       return h(
         'div',
         { className: 'gtd-desk__plaques', 'data-role': 'view-switch', 'data-view': mode },
-        plaque(VIEW_MODE.CANVAS, t('viewCanvasLabel')),
-        plaque(VIEW_MODE.FOCUS, t('viewFocusLabel')),
+        viewSwitchEntries(t).map(plaque),
       );
     }
 
@@ -2766,7 +2891,7 @@ window.__ModuleLoader__.load({
 
       /* 竖版卡：200×280 美术像素，立在桌面上；按下去盖印章，写成功、新快照回来时整张卡被抽走。 */
       const cardStyle = Object.assign(
-        deskBox(props.cardLeft, DESK_ART.card.y, props.cardWidth, DESK_ART.card.height),
+        deskBox(props.geometry.cardLeft, DESK_ART.card.y + props.geometry.originY, props.geometry.cardWidth, DESK_ART.card.height),
         { backgroundImage: `url(${DESK_PAPER_URL})` },
       );
 
@@ -2818,54 +2943,71 @@ window.__ModuleLoader__.load({
             card.title,
           ),
         ),
+        /* 「各行」保留原有的语义角色：facts 与每一行 fact。估算／容量已经移到小屏上。 */
         h(
           'div',
-          { className: 'gtd-desk__card-due-row' },
+          { className: 'gtd-desk__card-facts', 'data-role': 'focus-card-facts' },
           h(
-            'span',
-            {
-              className: 'gtd-desk__card-tag',
-              'data-role': 'focus-card-due',
-              'data-overdue': card.overdue === true ? 'true' : 'false',
-              style: deskText(12, 16),
-            },
-            dueText,
-            card.overdue === true
-              ? h(
-                  'span',
-                  { className: 'gtd-desk__card-overdue', 'data-role': 'focus-card-overdue' },
-                  ` · ${t('focusCardOverdue')}`,
-                )
-              : null,
-          ),
-        ),
-        requirementText === null
-          ? null
-          : h(
+            'div',
+            { className: 'gtd-desk__card-fact', 'data-role': 'focus-card-fact', 'data-fact': 'due' },
+            h(
               'div',
-              { className: 'gtd-desk__card-req' },
-              h('span', { className: 'gtd-desk__card-req-key', style: deskText(12, 18) }, t('focusCardRequirementLabel')),
+              { className: 'gtd-desk__card-due-row' },
               h(
-                'p',
+                'span',
                 {
-                  className: 'gtd-desk__card-req-text',
-                  'data-role': 'focus-card-requirement',
-                  style: deskText(12, 18),
+                  className: 'gtd-desk__card-tag',
+                  'data-role': 'focus-card-due',
+                  'data-overdue': card.overdue === true ? 'true' : 'false',
+                  style: deskText(12, 16),
                 },
-                requirementText,
-                requirementSource === null
-                  ? null
-                  : h(
+                dueText,
+                card.overdue === true
+                  ? h(
                       'span',
-                      {
-                        className: 'gtd-desk__card-req-source',
-                        'data-role': 'focus-card-requirement-source',
-                        style: deskText(12, 18),
-                      },
-                      fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
-                    ),
+                      { className: 'gtd-desk__card-overdue', 'data-role': 'focus-card-overdue' },
+                      ` · ${t('focusCardOverdue')}`,
+                    )
+                  : null,
               ),
             ),
+          ),
+          requirementText === null
+            ? null
+            : h(
+                'div',
+                { className: 'gtd-desk__card-fact', 'data-role': 'focus-card-fact', 'data-fact': 'requirement' },
+                h(
+                  'div',
+                  { className: 'gtd-desk__card-req' },
+                  h(
+                    'span',
+                    { className: 'gtd-desk__card-req-key', style: deskText(12, 18) },
+                    t('focusCardRequirementLabel'),
+                  ),
+                  h(
+                    'p',
+                    {
+                      className: 'gtd-desk__card-req-text',
+                      'data-role': 'focus-card-requirement',
+                      style: deskText(12, 18),
+                    },
+                    requirementText,
+                    requirementSource === null
+                      ? null
+                      : h(
+                          'span',
+                          {
+                            className: 'gtd-desk__card-req-source',
+                            'data-role': 'focus-card-requirement-source',
+                            style: deskText(12, 18),
+                          },
+                          fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
+                        ),
+                  ),
+                ),
+              ),
+        ),
         /* 写口那一行：完成（实心）与改期（描边）是两个写口，跳过是零写入的弱化项。 */
         h(
           'div',
@@ -2920,7 +3062,7 @@ window.__ModuleLoader__.load({
               onClick: (event) => {
                 const taskId = taskIdOf(event);
                 if (taskId === null) return;
-                if (typeof props.onSkip === 'function') props.onSkip(taskId);
+                if (typeof props.onSkip === 'function') props.onSkip(card);
               },
               style: deskText(12, 16),
             },
@@ -3101,8 +3243,7 @@ window.__ModuleLoader__.load({
           className: 'gtd-desk__card gtd-desk__card--blank',
           'data-role': 'focus-card',
           'data-state': pending ? 'pending' : 'empty',
-          'data-note-ref': '',
-          style: deskBox(props.cardLeft, DESK_ART.card.y, props.cardWidth, DESK_ART.card.height),
+          style: deskBox(props.geometry.cardLeft, DESK_ART.card.y + props.geometry.originY, props.geometry.cardWidth, DESK_ART.card.height),
         },
         h(
           'p',
@@ -3126,18 +3267,14 @@ window.__ModuleLoader__.load({
      */
     function DeskFailureCard(props) {
       const t = props.t;
-      const error = props.error !== null && typeof props.error === 'object' ? props.error : {};
-      const code = typeof error.code === 'string' && error.code.length > 0 ? error.code : 'unknown';
-      const message = typeof error.message === 'string' ? error.message : '';
-      const needsLogin = code === 'not-authenticated';
+      const { message, needsLogin } = failureInfoOf(props.error);
       return h(
         'article',
         {
           className: 'gtd-desk__card gtd-desk__card--failure',
           'data-role': 'focus-card',
           'data-state': 'error',
-          'data-note-ref': '',
-          style: deskBox(props.cardLeft, DESK_ART.card.y, props.cardWidth, DESK_ART.card.height),
+          style: deskBox(props.geometry.cardLeft, DESK_ART.card.y + props.geometry.originY, props.geometry.cardWidth, DESK_ART.card.height),
         },
         h(
           'div',
@@ -3176,7 +3313,7 @@ window.__ModuleLoader__.load({
      * 卡夹：「接下来」的实体形态。
      *
      * 只写标题与时限；点一张就抽到主位——**纯视图状态，零写入**。
-     * @param {object} props - props：`items`、`t`、`onPick`、`originX`。
+     * @param {object} props - props：`items`、`t`、`onPick`、`geometry`。
      * @returns {object} React 元素。
      */
     function DeskHolder(props) {
@@ -3188,8 +3325,8 @@ window.__ModuleLoader__.load({
           className: 'gtd-desk__holder',
           'data-role': 'gtd-desk-holder',
           style: deskBox(
-            DESK_ART.holder.x + props.originX,
-            DESK_ART.holder.y,
+            DESK_ART.holder.x + props.geometry.originX,
+            DESK_ART.holder.y + props.geometry.originY,
             DESK_ART.holder.width,
             DESK_ART.holder.height,
           ),
@@ -3419,24 +3556,29 @@ window.__ModuleLoader__.load({
       const baseCard = focus !== null && focus.card !== null && typeof focus.card === 'object' ? focus.card : null;
       const baseNext = focus !== null && Array.isArray(focus.next) ? focus.next : [];
 
-      /* 跳过（issue #10）：本次会话里被跳过的那几条。纯视图状态，不落任何本地存储。 */
-      const skipped = Array.isArray(props.skipped) ? props.skipped : [];
-      const isSkipped = (id) => typeof id === 'string' && skipped.includes(id);
+      /* 跳过（issue #10）：本次会话里被跳过的那几条——**插回卡夹末尾**，不是消失
+         （issue #13 故事 14）。纯视图状态，不落任何本地存储；刷新页面回到原位。 */
+      const skippedCards = Array.isArray(props.skipped)
+        ? props.skipped.filter((entry) => entry !== null && typeof entry === 'object' && typeof entry.id === 'string')
+        : [];
+      const skippedIds = new Set(skippedCards.map((entry) => entry.id));
+      const isSkipped = (id) => typeof id === 'string' && skippedIds.has(id);
 
-      /* 主卡与队列：跳过的那些从焦点里去掉；主卡被跳过就顺延到队列第一条。 */
+      /* 主卡与队列：被跳过的卡不占主位，但**插回卡夹末尾**；点它仍可抽回主位。 */
       const overrideCard = override !== null ? override.card : null;
       const sourceQueue = override !== null ? override.queue : baseNext;
-      const pool = sourceQueue.filter((entry) => !isSkipped(entry.id));
-      const fallbackCard = override !== null ? null : baseCard;
-      const wanted =
-        overrideCard !== null && !isSkipped(overrideCard.id)
-          ? overrideCard
-          : fallbackCard !== null && !isSkipped(fallbackCard.id)
-            ? fallbackCard
-            : null;
-      const hadCard = overrideCard !== null || fallbackCard !== null;
-      const card = wanted !== null ? wanted : hadCard && pool.length > 0 ? pool[0] : null;
-      const queue = card !== null && pool[0] !== undefined && pool[0].id === card.id ? pool.slice(1) : pool;
+      /* 先在原位置去掉被跳过的那些，再统一追加到末尾——避免同一张卡出现两遍。 */
+      const basePool = sourceQueue.filter((entry) => !isSkipped(entry.id));
+      const appended = skippedCards.filter((entry) => !basePool.some((other) => other.id === entry.id));
+      const pool = [...basePool, ...appended];
+      const fallbackCard =
+        override !== null ? null : baseCard !== null && !isSkipped(baseCard.id) ? baseCard : null;
+      const wanted = overrideCard !== null ? overrideCard : fallbackCard;
+      const hadCard = overrideCard !== null || baseCard !== null;
+      /* 主卡被跳过时顺延到卡夹里第一张**没被跳过**的；全都跳过就空着。 */
+      const firstAvailable = pool.find((entry) => !isSkipped(entry.id)) ?? null;
+      const card = wanted !== null ? wanted : hadCard ? firstAvailable : null;
+      const queue = card !== null ? pool.filter((entry) => entry.id !== card.id) : pool;
 
       /**
        * 点一条卡夹里的卡：把它抽到主位，原来的主卡插回队列最前面。
@@ -3446,6 +3588,17 @@ window.__ModuleLoader__.load({
         const rest = queue.filter((entry) => entry.id !== item.id);
         if (card !== null) setHistory((previous) => [card, ...previous].slice(0, 8));
         setOverride({ card: item, queue: card === null ? rest : [card, ...rest] });
+      };
+
+      /**
+       * 跳过当前这张：记进本次会话的「已跳过」清单（外壳保管），主卡换到下一张；
+       * 被跳过的那张会插回卡夹末尾。零请求、零写入。
+       * @param {object} target - 被跳过的行动卡。
+       */
+      const skipCard = (target) => {
+        if (target === null || typeof target !== 'object') return;
+        if (typeof props.onSkip === 'function') props.onSkip(target);
+        setOverride(null);
       };
 
       /** 左划／→：换到卡夹里的下一张（零写入）。 */
@@ -3485,24 +3638,6 @@ window.__ModuleLoader__.load({
         else swipePrevious();
       };
 
-      /**
-       * 键盘 ← → 等价于左右划；在输入框里打字时不动卡。
-       * @param {object} event - keydown。
-       */
-      const onDeskKeyDown = (event) => {
-        const target = event.target;
-        const tag = target !== null && target !== undefined && target.tagName ? String(target.tagName).toLowerCase() : '';
-        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-        if (target !== null && target !== undefined && target.isContentEditable === true) return;
-        if (event.key === 'ArrowRight') {
-          event.preventDefault();
-          swipeNext();
-        } else if (event.key === 'ArrowLeft') {
-          event.preventDefault();
-          swipePrevious();
-        }
-      };
-
       /* v2:project 点卡脚的项目指针 → 打开下钻层，并把项目箱摆在那儿（故事 23）。 */
       const openProject = () => {
         setDrillFocus('project');
@@ -3519,6 +3654,14 @@ window.__ModuleLoader__.load({
       };
 
       const status = error !== null ? 'error' : focus === null ? 'pending' : 'ready';
+      /* 窄窗：桌沿三件套（标牌／抽屉／开关）按可见宽度重新排，别被裁到屏幕外。 */
+      const plaquesX = geometry.narrow ? 8 : DESK_ART.plaques.x + geometry.originX;
+      const drawerX = geometry.narrow
+        ? Math.max(196, Math.floor((geometry.viewWidth - DESK_ART.drawer.width) / 2))
+        : DESK_ART.drawer.x + geometry.originX;
+      const powerX = geometry.narrow
+        ? Math.max(8, geometry.viewWidth - DESK_ART.power.width - 8)
+        : DESK_ART.power.x + geometry.originX;
 
       /* 工位上的东西，按前后关系排：房间 → 场景 → 灯 → 小屏 → 卡夹 → 便签叠 → 小旗 → 卡 → 桌沿。 */
       const deskChildren = [
@@ -3529,32 +3672,32 @@ window.__ModuleLoader__.load({
             className: 'gtd-desk__room',
             'data-role': 'gtd-desk-room',
             'aria-hidden': 'true',
-            style: deskBox(0, 0, geometry.boardWidth, geometry.boardHeight),
+            style: deskBox(0, geometry.originY, geometry.boardWidth, geometry.boardHeight),
           },
           h('span', {
             className: 'gtd-desk__wall-upper',
-            style: deskBox(0, 0, geometry.boardWidth, 40),
+            style: deskBox(0, geometry.originY, geometry.boardWidth, 40),
           }),
           h('span', {
             className: 'gtd-desk__wall',
-            style: deskBox(0, 40, geometry.boardWidth, 100),
+            style: deskBox(0, geometry.originY + 40, geometry.boardWidth, 100),
           }),
           h('span', {
             className: 'gtd-desk__tabletop',
             'data-role': 'gtd-desk-tabletop',
-            style: deskBox(0, 140, geometry.boardWidth, Math.max(1, geometry.boardHeight - 140)),
+            style: deskBox(0, geometry.originY + 140, geometry.boardWidth, 250),
           }),
           h('span', {
             className: 'gtd-desk__tabletop-edge',
-            style: deskBox(0, 140, geometry.boardWidth, 5),
+            style: deskBox(0, geometry.originY + 140, geometry.boardWidth, 5),
           }),
           h('span', {
             className: 'gtd-desk__front',
-            style: deskBox(0, 390, geometry.boardWidth, Math.max(0, geometry.boardHeight - 390)),
+            style: deskBox(0, geometry.originY + 390, geometry.boardWidth, Math.max(0, geometry.boardHeight - 390)),
           }),
           h('span', {
             className: 'gtd-desk__front-edge',
-            style: deskBox(0, 390, geometry.boardWidth, 4),
+            style: deskBox(0, geometry.originY + 390, geometry.boardWidth, 4),
           }),
         ),
         h('img', {
@@ -3567,7 +3710,7 @@ window.__ModuleLoader__.load({
           style: {
             position: 'absolute',
             left: `calc(var(--gtd-u) * ${geometry.originX})`,
-            top: 0,
+            top: `calc(var(--gtd-u) * ${geometry.originY})`,
             width: `calc(var(--gtd-u) * ${DESK_ART.width})`,
             height: `calc(var(--gtd-u) * ${DESK_ART.height})`,
             imageRendering: 'pixelated',
@@ -3582,7 +3725,7 @@ window.__ModuleLoader__.load({
           'aria-hidden': 'true',
           style: deskBox(
             DESK_ART.lamp.x + geometry.originX,
-            DESK_ART.lamp.y,
+            DESK_ART.lamp.y + geometry.originY,
             DESK_ART.lamp.width,
             DESK_ART.lamp.height,
           ),
@@ -3590,27 +3733,36 @@ window.__ModuleLoader__.load({
       ];
 
       if (error === null) {
+        const timelineToday =
+          snapshot.timeline !== null && typeof snapshot.timeline === 'object' ? snapshot.timeline.today : null;
         deskChildren.push(
-          h(DeskQuota, { key: 'quota', today, capacity, t, originX: geometry.originX }),
-          h(DeskScreen, { key: 'screen', card, today, t }),
-          h(DeskHolder, { key: 'holder', items: queue, t, onPick: pickFromQueue, originX: geometry.originX }),
-          h(DeskNotes, {
-            key: 'notes',
-            today,
-            capacity,
-            t,
-            open: notesOpen,
-            onToggle: () => setNotesOpen((open) => !open),
-            originX: geometry.originX,
-          }),
-          h(DeskFlag, {
-            key: 'flag',
-            reminders: focus !== null && Array.isArray(focus.reminders) ? focus.reminders : [],
-            t,
-            open: flagOpen,
-            onToggle: () => setFlagOpen((open) => !open),
-            originX: geometry.originX,
-          }),
+          h(DeskQuota, { key: 'quota', today, capacity, t, geometry }),
+          h(DeskScreen, { key: 'screen', card, today, timelineToday, t, geometry, pending: focus === null }),
+          /* 窄窗：卡和小屏优先，卡夹／便签叠／小旗收起来（换卡仍可左右划）。 */
+          geometry.narrow
+            ? null
+            : h(DeskHolder, { key: 'holder', items: queue, t, onPick: pickFromQueue, geometry }),
+          geometry.narrow
+            ? null
+            : h(DeskNotes, {
+                key: 'notes',
+                today,
+                capacity,
+                t,
+                open: notesOpen,
+                onToggle: () => setNotesOpen((open) => !open),
+                geometry,
+              }),
+          geometry.narrow
+            ? null
+            : h(DeskFlag, {
+                key: 'flag',
+                reminders: focus !== null && Array.isArray(focus.reminders) ? focus.reminders : [],
+                t,
+                open: flagOpen,
+                onToggle: () => setFlagOpen((open) => !open),
+                geometry,
+              }),
         );
       }
 
@@ -3621,8 +3773,7 @@ window.__ModuleLoader__.load({
             error,
             t,
             onRetry: props.onRetry,
-            cardLeft: geometry.cardLeft,
-            cardWidth: geometry.cardWidth,
+            geometry,
           }),
         );
       } else if (card !== null) {
@@ -3635,15 +3786,14 @@ window.__ModuleLoader__.load({
             write: props.write,
             onComplete: props.onComplete,
             onReschedule: props.onReschedule,
-            onSkip: props.onSkip,
+            onSkip: skipCard,
             onRefresh: props.onReload,
             onOpenProject: openProject,
             stamp,
             onStamp,
             onSwipeStart,
             onSwipeEnd,
-            cardLeft: geometry.cardLeft,
-            cardWidth: geometry.cardWidth,
+            geometry,
           }),
         );
       } else {
@@ -3652,13 +3802,12 @@ window.__ModuleLoader__.load({
             key: 'blank-card',
             t,
             pending: focus === null,
-            cardLeft: geometry.cardLeft,
-            cardWidth: geometry.cardWidth,
+            geometry,
           }),
         );
       }
 
-      if (error === null && skipped.length > 0) {
+      if (error === null && skippedCards.length > 0) {
         deskChildren.push(
           h(
             'p',
@@ -3666,7 +3815,12 @@ window.__ModuleLoader__.load({
               key: 'skip-notice',
               className: 'gtd-desk__skip-notice',
               'data-role': 'focus-skip-notice',
-              style: Object.assign(deskBox(18 + geometry.originX, 352, 180, 32), deskText(12, 16)),
+              style: Object.assign(
+                geometry.narrow
+                  ? deskBox(8, geometry.originY + 340, 150, 30)
+                  : deskBox(18 + geometry.originX, geometry.originY + 352, 180, 32),
+                deskText(12, 16),
+              ),
             },
             t('focusSkipNotice'),
           ),
@@ -3682,8 +3836,8 @@ window.__ModuleLoader__.load({
             className: 'gtd-desk__plaques-wrap',
             'data-role': 'gtd-desk-plaques',
             style: deskBox(
-              DESK_ART.plaques.x + geometry.originX,
-              DESK_ART.plaques.y,
+              plaquesX,
+              DESK_ART.plaques.y + geometry.originY,
               DESK_ART.plaques.width,
               DESK_ART.plaques.height,
             ),
@@ -3700,8 +3854,8 @@ window.__ModuleLoader__.load({
             className: 'gtd-desk__drawer-wrap',
             'data-role': 'gtd-desk-drawer',
             style: deskBox(
-              DESK_ART.drawer.x + geometry.originX,
-              DESK_ART.drawer.y,
+              drawerX,
+              DESK_ART.drawer.y + geometry.originY,
               DESK_ART.drawer.width,
               DESK_ART.drawer.height,
             ),
@@ -3728,8 +3882,8 @@ window.__ModuleLoader__.load({
             className: 'gtd-desk__switch-wrap',
             'data-role': 'gtd-desk-switch',
             style: deskBox(
-              DESK_ART.power.x + geometry.originX,
-              DESK_ART.power.y,
+              powerX,
+              DESK_ART.power.y + geometry.originY,
               DESK_ART.power.width,
               DESK_ART.power.height,
             ),
@@ -3777,7 +3931,6 @@ window.__ModuleLoader__.load({
             'data-art-width': String(geometry.boardWidth),
             'data-art-height': String(geometry.boardHeight),
             'data-card-width': String(geometry.cardWidth),
-            onKeyDown: onDeskKeyDown,
             style: Object.assign({}, DESK_PALETTE, {
               '--gtd-u': `${geometry.unit}px`,
               position: 'absolute',
@@ -3971,13 +4124,14 @@ window.__ModuleLoader__.load({
        * 跳过一条动作：**零写入**。
        *
        * Host 那侧没有「跳过」这个写口——发了过去只会被拒掉。
-       * 这里只记一笔「本次会话里不再看见它」，不请求、不落盘。
-       * @param {string} taskId - 目标动作 id。
+       * 这里只记一笔「本次会话里把它插回卡夹末尾」，不请求、不落盘。
+       * 记的是**卡本身**而不是 id：卡夹末尾要能把它再画出来（issue #13 故事 14）。
+       * @param {object} card - 被跳过的行动卡。
        * @returns {void} 无。
        */
-      const skipTask = React.useCallback((taskId) => {
-        if (typeof taskId !== 'string' || taskId.length === 0) return;
-        setSkipped((previous) => (previous.includes(taskId) ? previous : [...previous, taskId]));
+      const skipTask = React.useCallback((card) => {
+        if (card === null || typeof card !== 'object' || typeof card.id !== 'string' || card.id.length === 0) return;
+        setSkipped((previous) => [...previous.filter((entry) => entry.id !== card.id), card]);
       }, []);
       /* v2:write end */
       /* gtd:04 点主攻带上的条目，开的就是那条便贴的抽屉 */
@@ -4012,9 +4166,7 @@ window.__ModuleLoader__.load({
         if (viewMode === VIEW_MODE.CANVAS) {
           return h(WorkbenchFailure, { t, error: state.error, onRetry: load });
         }
-        const failure = state.error !== null && typeof state.error === 'object' ? state.error : {};
-        const failureCode = typeof failure.code === 'string' && failure.code.length > 0 ? failure.code : 'unknown';
-        const needsLogin = failureCode === 'not-authenticated';
+        const { code: failureCode, needsLogin } = failureInfoOf(state.error);
         return h(
           'div',
           {
@@ -4204,39 +4356,38 @@ window.__ModuleLoader__.load({
 .gtd-desk__front-edge { background: var(--gtd-front-edge); }
 .gtd-desk__lamp { pointer-events: none; }
 .gtd-desk__quota {
-  background: #20242d;
-  border: calc(var(--gtd-u) * 1) solid #39404e;
-  box-shadow: inset calc(var(--gtd-u) * 1) calc(var(--gtd-u) * 1) 0 rgba(255, 255, 255, 0.06);
+  background: var(--gtd-lamp-base);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-lamp-edge);
+  box-shadow: inset calc(var(--gtd-u) * 1) calc(var(--gtd-u) * 1) 0 var(--gtd-highlight-dim);
 }
 .gtd-desk__quota[data-on="1"] { background: var(--gtd-warm); }
 .gtd-desk__screen {
   background: var(--gtd-screen);
   border: calc(var(--gtd-u) * 1) solid var(--gtd-screen-edge);
   box-shadow:
-    inset 0 calc(var(--gtd-u) * 2) 0 rgba(255, 255, 255, 0.05),
-    calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+    inset 0 calc(var(--gtd-u) * 2) 0 var(--gtd-highlight-dim),
+    calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 var(--gtd-shadow-hard);
   color: var(--gtd-screen-ink);
-  padding: calc(var(--gtd-u) * 8);
+  padding: calc(var(--gtd-u) * 6);
   display: flex;
   flex-direction: column;
-  gap: calc(var(--gtd-u) * 2);
+  gap: calc(var(--gtd-u) * 1);
   overflow: hidden;
 }
 .gtd-desk__screen-line { white-space: nowrap; overflow: hidden; text-overflow: clip; }
-.gtd-desk__screen-line[data-role="focus-card-capacity"] { white-space: normal; }
 .gtd-desk__screen-dim { color: var(--gtd-screen-dim); }
-.gtd-desk__screen-strong { color: #f2e9d6; }
+.gtd-desk__screen-strong { color: var(--gtd-plaque-ink-active); }
 .gtd-desk__screen-bad { color: var(--gtd-screen-bad); }
 .gtd-desk__holder {
   background: var(--gtd-holder);
   border: calc(var(--gtd-u) * 1) solid var(--gtd-holder-edge);
-  box-shadow: inset 0 calc(var(--gtd-u) * 2) 0 rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 calc(var(--gtd-u) * 2) 0 var(--gtd-highlight-dim);
   padding: calc(var(--gtd-u) * 6);
 }
 .gtd-desk__holder-body { display: flex; flex-direction: column; gap: calc(var(--gtd-u) * 3); height: 100%; }
-.gtd-desk__holder-head { display: flex; justify-content: space-between; color: #8d8577; }
-.gtd-desk__holder-count { color: #6a6154; }
-.gtd-desk__holder-empty { margin: 0; flex: 1; display: grid; place-items: center; color: #6a6154; }
+.gtd-desk__holder-head { display: flex; justify-content: space-between; color: var(--gtd-holder-dim); }
+.gtd-desk__holder-count { color: var(--gtd-ink-mute); }
+.gtd-desk__holder-empty { margin: 0; flex: 1; display: grid; place-items: center; color: var(--gtd-ink-mute); }
 .gtd-desk__slot {
   display: flex;
   flex-direction: row;
@@ -4246,7 +4397,7 @@ window.__ModuleLoader__.load({
   min-height: 0;
   background: var(--gtd-paper);
   color: var(--gtd-ink);
-  border: calc(var(--gtd-u) * 1) solid #14110c;
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-card-edge);
   padding: 0 calc(var(--gtd-u) * 5);
   cursor: pointer;
   text-align: left;
@@ -4261,8 +4412,8 @@ window.__ModuleLoader__.load({
   color: var(--gtd-ink);
   border: calc(var(--gtd-u) * 1) solid var(--gtd-notes-edge);
   box-shadow:
-    calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 3) 0 #cfc5ac,
-    calc(var(--gtd-u) * 8) calc(var(--gtd-u) * 6) 0 #b9af96;
+    calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 3) 0 var(--gtd-notes-shadow-1),
+    calc(var(--gtd-u) * 8) calc(var(--gtd-u) * 6) 0 var(--gtd-notes-shadow-2);
   padding: calc(var(--gtd-u) * 7);
   cursor: pointer;
   overflow: visible;
@@ -4277,8 +4428,8 @@ window.__ModuleLoader__.load({
   width: calc(var(--gtd-u) * 210);
   margin-bottom: calc(var(--gtd-u) * 4);
   background: var(--gtd-paper-2);
-  border: calc(var(--gtd-u) * 1) solid #14110c;
-  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.45);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-card-edge);
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 var(--gtd-shadow-hard);
   padding: calc(var(--gtd-u) * 6);
   color: var(--gtd-ink-dim);
 }
@@ -4295,15 +4446,15 @@ window.__ModuleLoader__.load({
   text-align: left;
   color: var(--gtd-flag);
 }
-.gtd-desk__flag-pole { display: block; width: calc(var(--gtd-u) * 2); height: calc(var(--gtd-u) * 30); background: #6a6154; }
+.gtd-desk__flag-pole { display: block; width: calc(var(--gtd-u) * 2); height: calc(var(--gtd-u) * 30); background: var(--gtd-ink-mute); }
 .gtd-desk__flag-banner {
   display: block;
   background: var(--gtd-flag);
   border: calc(var(--gtd-u) * 1) solid var(--gtd-flag-edge);
-  color: #f6ecd9;
+  color: var(--gtd-flag-ink);
   padding: 0 calc(var(--gtd-u) * 4);
   line-height: calc(var(--gtd-u) * 20);
-  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.45);
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 var(--gtd-shadow-hard);
   white-space: nowrap;
 }
 .gtd-desk__flag-list {
@@ -4313,8 +4464,8 @@ window.__ModuleLoader__.load({
   width: calc(var(--gtd-u) * 190);
   background: var(--gtd-paper-2);
   color: var(--gtd-ink);
-  border: calc(var(--gtd-u) * 1) solid #14110c;
-  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-card-edge);
+  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 var(--gtd-shadow-hard);
   padding: calc(var(--gtd-u) * 6);
 }
 .gtd-desk__flag-heading { margin: 0 0 calc(var(--gtd-u) * 4); color: var(--gtd-ink-dim); }
@@ -4322,23 +4473,26 @@ window.__ModuleLoader__.load({
 .gtd-desk__flag-item { display: flex; flex-direction: column; }
 .gtd-desk__flag-due { color: var(--gtd-ink-dim); }
 .gtd-desk__plaques { display: flex; gap: 0; height: 100%; }
-.gtd-desk__plaque { background: var(--gtd-plaque); border: calc(var(--gtd-u) * 1) solid var(--gtd-plaque-edge); color: #b9b0a0; font: inherit; cursor: pointer; padding: 0; text-align: center; }
+.gtd-desk__plaque { background: var(--gtd-plaque); border: calc(var(--gtd-u) * 1) solid var(--gtd-plaque-edge); color: var(--gtd-plaque-ink); font: inherit; cursor: pointer; padding: 0; text-align: center; }
 .gtd-desk__plaque:nth-child(1) { width: calc(var(--gtd-u) * 84); }
 .gtd-desk__plaque:nth-child(2) { width: calc(var(--gtd-u) * 94); }
-.gtd-desk__plaque[data-active="true"] { background: #333946; color: #f2e9d6; }
-.gtd-desk__drawer { width: 100%; height: 100%; background: #241d15; border: calc(var(--gtd-u) * 1) solid #4a3f2e; color: #9a8f7c; cursor: pointer; font: inherit; padding: 0; }
-.gtd-desk__drawer:hover { background: #2e2519; color: #cfc3ad; }
-.gtd-desk__power { width: 100%; height: 100%; background: var(--gtd-power); border: calc(var(--gtd-u) * 1) solid var(--gtd-plaque-edge); color: #b9b0a0; cursor: pointer; font: inherit; padding: 0; }
-.gtd-desk__power:hover { background: #262b35; color: #f2e9d6; }
+.gtd-desk__plaque[data-active="true"] { background: var(--gtd-plaque-active); color: var(--gtd-plaque-ink-active); }
+.gtd-desk__drawer { width: 100%; height: 100%; background: var(--gtd-drawer); border: calc(var(--gtd-u) * 1) solid var(--gtd-drawer-edge); color: var(--gtd-drawer-ink); cursor: pointer; font: inherit; padding: 0; }
+.gtd-desk__drawer:hover { background: var(--gtd-drawer-hover); color: var(--gtd-drawer-hover-ink); }
+.gtd-desk__power { width: 100%; height: 100%; background: var(--gtd-power); border: calc(var(--gtd-u) * 1) solid var(--gtd-plaque-edge); color: var(--gtd-plaque-ink); cursor: pointer; font: inherit; padding: 0; }
+.gtd-desk__power:hover { background: var(--gtd-power-hover); color: var(--gtd-plaque-ink-active); }
 .gtd-desk__card {
   box-sizing: border-box;
   color: var(--gtd-ink);
   background-color: var(--gtd-paper);
   background-size: calc(var(--gtd-u) * 16);
   background-repeat: repeat;
-  border: calc(var(--gtd-u) * 1) solid #14110c;
+  image-rendering: pixelated;
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-card-edge);
   padding: calc(var(--gtd-u) * 10);
-  overflow: hidden;
+  box-shadow:
+    calc(var(--gtd-u) * 5) calc(var(--gtd-u) * 7) 0 var(--gtd-shadow-card),
+    inset calc(var(--gtd-u) * 1) calc(var(--gtd-u) * 1) 0 var(--gtd-highlight);
   animation: gtd-desk-card-in 180ms steps(4) both;
 }
 @keyframes gtd-desk-card-in {
@@ -4354,12 +4508,12 @@ window.__ModuleLoader__.load({
   width: calc(var(--gtd-u) * 26);
   background: linear-gradient(
     to right,
-    rgba(255, 206, 138, 0.16) 0,
-    rgba(255, 206, 138, 0.16) calc(var(--gtd-u) * 8),
-    rgba(255, 206, 138, 0.1) calc(var(--gtd-u) * 8),
-    rgba(255, 206, 138, 0.1) calc(var(--gtd-u) * 16),
-    rgba(255, 206, 138, 0.05) calc(var(--gtd-u) * 16),
-    rgba(255, 206, 138, 0.05) calc(var(--gtd-u) * 26)
+    var(--gtd-light-strong) 0,
+    var(--gtd-light-strong) calc(var(--gtd-u) * 8),
+    var(--gtd-light-mid) calc(var(--gtd-u) * 8),
+    var(--gtd-light-mid) calc(var(--gtd-u) * 16),
+    var(--gtd-light-soft) calc(var(--gtd-u) * 16),
+    var(--gtd-light-soft) calc(var(--gtd-u) * 26)
   );
   pointer-events: none;
 }
@@ -4400,7 +4554,7 @@ window.__ModuleLoader__.load({
   bottom: calc(var(--gtd-u) * 28);
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: calc(var(--gtd-u) * 6);
+  gap: calc(var(--gtd-u) * 4);
   align-items: center;
 }
 .gtd-desk__btn {
@@ -4424,7 +4578,7 @@ window.__ModuleLoader__.load({
   position: absolute;
   left: calc(var(--gtd-u) * 10);
   right: calc(var(--gtd-u) * 10);
-  bottom: calc(var(--gtd-u) * 28);
+  bottom: calc(var(--gtd-u) * 112);
   z-index: 3;
   background: var(--gtd-paper-2);
   border: calc(var(--gtd-u) * 1) solid var(--gtd-ink);
@@ -4446,7 +4600,7 @@ window.__ModuleLoader__.load({
   background: var(--gtd-paper-2);
   border: calc(var(--gtd-u) * 1) solid var(--gtd-ink);
   padding: calc(var(--gtd-u) * 6);
-  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 var(--gtd-shadow-hard);
 }
 .gtd-desk__date { font: inherit; color: var(--gtd-ink); background: var(--gtd-paper); border: calc(var(--gtd-u) * 1) solid var(--gtd-ink); padding: 0 calc(var(--gtd-u) * 2); }
 .gtd-desk__card-foot {
@@ -4458,7 +4612,7 @@ window.__ModuleLoader__.load({
   align-items: baseline;
   gap: calc(var(--gtd-u) * 6);
   color: var(--gtd-ink-dim);
-  border-top: calc(var(--gtd-u) * 1) solid rgba(34, 29, 22, 0.25);
+  border-top: calc(var(--gtd-u) * 1) solid var(--gtd-ink-line);
   padding-top: calc(var(--gtd-u) * 2);
 }
 .gtd-desk__card-foot-link { margin-left: auto; border: 0; background: none; color: var(--gtd-ink-dim); font: inherit; cursor: pointer; padding: 0; }
@@ -4472,7 +4626,7 @@ window.__ModuleLoader__.load({
   border: calc(var(--gtd-u) * 1) solid var(--gtd-ink);
   padding: calc(var(--gtd-u) * 2) calc(var(--gtd-u) * 6);
   transform: rotate(-3deg);
-  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.35);
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 var(--gtd-shadow-note);
 }
 .gtd-desk__stamp {
   position: absolute;
@@ -4499,8 +4653,8 @@ window.__ModuleLoader__.load({
   right: calc(var(--gtd-u) * 8);
   top: calc(var(--gtd-u) * 18);
   background: var(--gtd-paper-2);
-  border: calc(var(--gtd-u) * 1) solid #14110c;
-  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-card-edge);
+  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 var(--gtd-shadow-hard);
   padding: calc(var(--gtd-u) * 8);
   transform: rotate(-2deg);
 }
@@ -4511,8 +4665,8 @@ window.__ModuleLoader__.load({
   margin: 0;
   background: var(--gtd-paper-2);
   color: var(--gtd-ink);
-  border: calc(var(--gtd-u) * 1) solid #14110c;
-  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.45);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-card-edge);
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 var(--gtd-shadow-hard);
   padding: calc(var(--gtd-u) * 4);
   overflow: hidden;
   z-index: 2;
