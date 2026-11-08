@@ -75,6 +75,8 @@
   "focusNextEmpty": "Nothing else queued",
   "focusCardEmpty": "Nothing to do right now",
   "focusCardTwoMinute": "Two-minute card: do it now, skip deciding",
+  "focusCardFootProjectLabel": "Project",
+  "focusCardFootProjectLink": "Project list →",
   "focusCompleteLabel": "Done",
   "focusCompletePending": "Completing…",
   "focusCompleteRefreshFailed": "Completed, but refreshing failed",

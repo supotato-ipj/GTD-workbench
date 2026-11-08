@@ -148,7 +148,7 @@ test('接缝 B：日历箱只画有外部约定时刻的条目', async () => {
   // 口径在 Host 侧过滤：日历箱只剩开庭那一条（周期日常不进未完成取数）。
   assert.deepEqual(
     calendar.notes.map((note) => note.title),
-    ['沅川建业混凝土有限公司，开庭时间12月12日下午2点周六，'],
+    ['某混凝土公司，开庭时间12月12日下午2点周六，'],
   );
   const document = await renderBoard(snapshot);
   const box = document.querySelector('[data-role="box"][data-container="calendar"]');

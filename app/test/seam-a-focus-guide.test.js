@@ -96,8 +96,8 @@ test('接缝 A：主卡带齐工作内容、完成时限、完成要求、预计
 
 test('接缝 A：滴答的专注估算字段换算成预计耗时', async () => {
   const estimated = rawTasks.map((task) =>
-    task.id === '6ad5b0aa1e4b0c399cc072706'
-      ? { ...task, focusSummaries: { estimatedPomo: 2, estimatedDuration: 30 } }
+    task.id === '7c4e0000000000000000000a'
+      ? { ...task, focusSummaries: { estimatedPomo: 2 } }
       : task,
   );
   const snapshot = await snapshotOf(estimated);
@@ -107,6 +107,19 @@ test('接缝 A：滴答的专注估算字段换算成预计耗时', async () => 
   assert.equal(card.estimateSource, 'estimatedPomo');
   // 装不装得下：估时 50 分钟，剩余可排时间远不止 50。
   assert.equal(card.capacityHint.fits, true);
+});
+
+test('接缝 A：专注时长的单位是秒——3000 秒折成 50 分钟', async () => {
+  const estimated = rawTasks.map((task) =>
+    task.id === '7c4e0000000000000000000a'
+      ? { ...task, focusSummaries: { estimatedDuration: 3000 } }
+      : task,
+  );
+  const snapshot = await snapshotOf(estimated);
+  const card = snapshot.focus.card;
+  assert.ok(card !== null);
+  assert.equal(card.estimateMinutes, 50);
+  assert.equal(card.estimateSource, 'estimatedDuration');
 });
 
 test('接缝 A：每条便贴都带资格与不合格原因，落在正确的条目上', async () => {
@@ -136,7 +149,7 @@ test('接缝 A：每条便贴都带资格与不合格原因，落在正确的条
   assert.equal(daily.eligible, false);
   assert.equal(daily.ineligibleReason, '日清常驻顶部');
   // 执行清单里带唯一时间档的动作：有资格。
-  const action = noteOf(snapshot, '6ad5b0aa1e4b0c399cc072706');
+  const action = noteOf(snapshot, '7c4e0000000000000000000a');
   assert.equal(action.eligible, true);
   assert.equal(action.ineligibleReason, null);
 });

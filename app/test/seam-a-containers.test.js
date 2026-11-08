@@ -148,7 +148,7 @@ test('接缝 A：日历箱只显示有外部约定时刻的条目', async () => 
   assert.ok(calendar, '日历这一组不见了');
   assert.deepEqual(
     calendar.notes.map((note) => note.title),
-    ['沅川建业混凝土有限公司，开庭时间12月12日下午2点周六，'],
+    ['某混凝土公司，开庭时间12月12日下午2点周六，'],
   );
   // 被挡掉的两条：传递法律文书（周期日常，时段已经开始）与查询被执行案件（只是一个时间点，是期限不是时刻）。
   const titles = calendar.notes.map((note) => note.title);

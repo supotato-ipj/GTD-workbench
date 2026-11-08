@@ -81,8 +81,8 @@ test('接缝 A：便贴带上它对应的记录编号，按 ①–⑨ 与关键�
   // 标题里有编号的按编号对。
   assert.equal(byTitle.get('⑨ 案件留痕清单（③④⑦ 各 5 行）'), '⑨');
   assert.equal(byTitle.get('⑥ 汇总：各岗位意见（采纳/不采纳 + 理由）'), '⑥');
-  // 标题里没编号的靠关键词回退：「洛州恒远案件@傅明远」对不上任何一页。
-  assert.equal(byTitle.get('洛州恒远案件@傅明远'), null);
+  // 标题里没编号的靠关键词回退：「乙公司工程项目案@同事乙」对不上任何一页。
+  assert.equal(byTitle.get('乙公司工程项目案@同事乙'), null);
   // 每条便贴都要有这个键（哪怕是 null），不省略。
   for (const note of notes) assert.ok(Object.prototype.hasOwnProperty.call(note, 'record'));
 });

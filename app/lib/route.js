@@ -130,9 +130,7 @@ export function resolveContainers(source) {
  * @returns {object | undefined} 容量配置；没有时是 undefined。
  */
 export function resolveCapacityConfig(source) {
-  const value = typeof source === 'function' ? safeCall(source) : source;
-  if (value === null || value === undefined) return undefined;
-  return typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+  return resolveOptionalObject(source);
 }
 
 /**
@@ -145,6 +143,18 @@ export function resolveCapacityConfig(source) {
  * @returns {object | undefined} 规则参数；没有时是 undefined。
  */
 export function resolveTwoMinutePolicy(source) {
+  return resolveOptionalObject(source);
+}
+
+/**
+ * 解析一个「可能带默认值的依赖」：函数就调它、对象就直接用、坏值退回默认。
+ *
+ * 容量配置与两分钟规则参数是同一套口径（都可以是值，也可以是每次请求现取的函数），
+ * 所以共用这一个解析器——**别把同一段逻辑抄两遍**，抄一遍就会漂。
+ * @param {object | (() => object)} source - 依赖或读取器。
+ * @returns {object | undefined} 解析出来的对象；没有或坏值时是 undefined。
+ */
+function resolveOptionalObject(source) {
   const value = typeof source === 'function' ? safeCall(source) : source;
   if (value === null || value === undefined) return undefined;
   return typeof value === 'object' && !Array.isArray(value) ? value : undefined;

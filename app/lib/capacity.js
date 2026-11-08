@@ -364,11 +364,17 @@ export function capacityFor(now, config = DEFAULT_CAPACITY_CONFIG) {
 /**
  * 一条动作的预计耗时（分钟）与它的来源。
  *
- * 来源是滴答任务 JSON 里的 `focusSummaries.estimatedPomo` 与 `focusSummaries.estimatedDuration`
+ * 来源是滴答任务 JSON 里的 `focusSummaries.estimatedDuration` 与 `focusSummaries.estimatedPomo`
  * （**不在顶层**）。口径：
- * - 估时分钟 = `estimatedPomo` × 番茄分钟；
- * - `estimatedPomo` 为 0 或缺失 = **未估算**（不是 0 分钟）；
- * - `estimatedDuration` 作备选，**单位按分钟处理——这是假设**，见 app/README.md。
+ * - `estimatedDuration` 的单位是**秒**（滴答 CLI 的 `task update --help` 写明
+ *   `--estimated-duration <seconds> 预计专注时长（秒）`），除以 60 折成分钟；
+ * - `estimatedPomo` × 番茄分钟（番茄分钟来自本机容量配置，缺省 25）；
+ * - 两个都没有（或都为 0）= **未估算**（`null`，不是 0 分钟）。
+ *
+ * 取值优先级：**`estimatedDuration` 在前**——它比「几个番茄」更接近真实时长；
+ * 番茄数作备选。
+ *
+ * 这是估时的**唯一入口**：别处（焦点推导、行动卡）都调它，别再各算一份。
  * @param {object} note - 便贴（带 estimatePomo / estimateDuration）。
  * @param {object} [options] - 选项。
  * @param {number} [options.pomodoroMinutes] - 一个番茄多少分钟，默认取通用默认值（25）。
@@ -376,6 +382,10 @@ export function capacityFor(now, config = DEFAULT_CAPACITY_CONFIG) {
  */
 export function estimateOf(note, { pomodoroMinutes = DEFAULT_CAPACITY_CONFIG.番茄分钟 } = {}) {
   if (note === null || typeof note !== 'object') return { minutes: null, source: null };
+  const duration = note.estimateDuration;
+  if (typeof duration === 'number' && Number.isFinite(duration) && duration > 0) {
+    return { minutes: minutesOfSeconds(duration), source: 'estimatedDuration' };
+  }
   const pomo = note.estimatePomo;
   if (typeof pomo === 'number' && Number.isFinite(pomo) && pomo > 0) {
     const minutes =
@@ -384,39 +394,16 @@ export function estimateOf(note, { pomodoroMinutes = DEFAULT_CAPACITY_CONFIG.番
         : DEFAULT_CAPACITY_CONFIG.番茄分钟;
     return { minutes: pomo * minutes, source: 'estimatedPomo' };
   }
-  const duration = note.estimateDuration;
-  if (typeof duration === 'number' && Number.isFinite(duration) && duration > 0) {
-    return { minutes: duration, source: 'estimatedDuration' };
-  }
   return { minutes: null, source: null };
 }
 
 /**
- * 一条动作的预计耗时（分钟）与来源，番茄分钟取自**容量配置**。
- *
- * 番茄分钟是容量参数的一部分（ADR-0011）：配置里写多少就按多少折算；
- * 配置里没有、或者写坏了，就用通用默认值。
- * @param {object} note - 便贴（带 estimatePomo / estimateDuration）。
- * @param {object} [config] - 容量配置；不给就用通用默认值。
- * @returns {{ minutes: number | null, source: string | null }} 分钟数与来源；未估算时 minutes 为 null。
+ * 秒换算成分钟（保留两位小数，不留浮点尾巴）。
+ * @param {number} seconds - 秒数。
+ * @returns {number} 分钟数。
  */
-export function estimateWithConfig(note, config = DEFAULT_CAPACITY_CONFIG) {
-  const input = readConfig(config === null || config === undefined ? DEFAULT_CAPACITY_CONFIG : config);
-  return estimateOf(note, { pomodoroMinutes: input.pomodoroMinutes });
-}
-
-/**
- * 一条动作的预计耗时（分钟）。
- *
- * 口径见 {@link estimateOf}：番茄数 × 番茄分钟；番茄数缺失或为 0 = **未估算**（不是 0 分钟）；
- * `estimatedDuration` 作备选，单位按分钟处理（这是假设）。
- * @param {object} note - 便贴（带 estimatePomo / estimateDuration）。
- * @param {object} [options] - 选项。
- * @param {number} [options.pomodoroMinutes] - 一个番茄多少分钟，默认取通用默认值（25）。
- * @returns {number | null} 预计分钟数；未估算时为 null。
- */
-export function estimateMinutes(note, options = {}) {
-  return estimateOf(note, options).minutes;
+function minutesOfSeconds(seconds) {
+  return Math.round((seconds / 60) * 100) / 100;
 }
 
 /**

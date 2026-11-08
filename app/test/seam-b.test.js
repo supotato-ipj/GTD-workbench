@@ -118,7 +118,7 @@ test('接缝 B：便贴渲染出标题', () => {
   const document = renderPanel({ initialSnapshot: snapshot, initialView: 'canvas' });
   const titles = [...document.querySelectorAll('[data-role="note"] [data-role="title"]')].map((node) => node.textContent);
   assert.deepEqual(titles, [
-    '追问业务部：归期 + 5 课题反馈',
+    '追问运营部：归期 + 5 课题反馈',
     '文书传递（11/4 日清）',
     '⑥ 汇总：各岗位意见（采纳/不采纳 + 理由）',
     '⑨ 案件留痕清单（③④⑦ 各 5 行）',

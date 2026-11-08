@@ -137,7 +137,7 @@ export function noteOf(task, timeZone) {
     nextStep: nextStepOf(task.content),
     // 项目不带子任务（ADR-0004）：这里只记事实，判不判由 app/lib/rules.js 决定。
     hasChildren: Array.isArray(task.childIds) ? task.childIds.length > 0 : false,
-    // 专注估算：番茄数与备选时长（单位按分钟处理，这是假设，见 app/README.md）。
+    // 专注估算：番茄数与专注时长（**时长单位是秒**，见 app/lib/capacity.js 的 estimateOf）。
     estimatePomo: typeof summaries.estimatedPomo === 'number' ? summaries.estimatedPomo : null,
     estimateDuration: typeof summaries.estimatedDuration === 'number' ? summaries.estimatedDuration : null,
   };

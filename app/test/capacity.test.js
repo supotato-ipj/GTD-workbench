@@ -12,8 +12,7 @@ import { test } from 'node:test';
 import {
   DEFAULT_CAPACITY_CONFIG,
   capacityFor,
-  estimateMinutes,
-  estimateWithConfig,
+  estimateOf,
   fitsWithin,
   schedulableMinutesOf,
 } from '../lib/capacity.js';
@@ -205,35 +204,54 @@ test('容量：可排时间是纯函数——同一份配置算两次结果一�
 });
 
 test('预计耗时：番茄分钟来自本机配置——配置里没有就用通用默认值', () => {
-  assert.equal(estimateWithConfig(note({ estimatePomo: 2 }), config({ 番茄分钟: 30 })).minutes, 60);
+  // 配置里写了番茄分钟就按它折算（容量那边读出来的就是它）。
+  assert.equal(capacityFor({ date: '2026-11-05', time: '09:00' }, config({ 番茄分钟: 30 })).pomodoroMinutes, 30);
+  assert.equal(estimateOf(note({ estimatePomo: 2 }), { pomodoroMinutes: 30 }).minutes, 60);
   // 配置里没写番茄分钟 → 通用默认值的 25。
-  assert.equal(estimateWithConfig(note({ estimatePomo: 2 })).minutes, 50);
-  // 配置里的番茄分钟不是数 → 也退回通用默认值，不算出一个 0 分钟。
-  assert.equal(estimateWithConfig(note({ estimatePomo: 2 }), config({ 番茄分钟: '不是数' })).minutes, 50);
+  assert.equal(capacityFor({ date: '2026-11-05', time: '09:00' }).pomodoroMinutes, 25);
+  assert.equal(estimateOf(note({ estimatePomo: 2 })).minutes, 50);
+  // 番茄分钟不是数 → 也退回通用默认值，不算出一个 0 分钟。
+  assert.equal(estimateOf(note({ estimatePomo: 2 }), { pomodoroMinutes: '不是数' }).minutes, 50);
 });
 
 test('预计耗时：番茄数 × 番茄分钟', () => {
-  assert.equal(estimateMinutes(note({ estimatePomo: 2 })), 50);
-  assert.equal(estimateMinutes(note({ estimatePomo: 1 }), { pomodoroMinutes: 30 }), 30);
+  assert.equal(estimateOf(note({ estimatePomo: 2 })).minutes, 50);
+  assert.equal(estimateOf(note({ estimatePomo: 1 }), { pomodoroMinutes: 30 }).minutes, 30);
+  assert.equal(estimateOf(note({ estimatePomo: 2 })).source, 'estimatedPomo');
 });
 
 test('预计耗时：番茄数为 0 或缺失 = 未估算，不是 0 分钟', () => {
-  assert.equal(estimateMinutes(note({ estimatePomo: 0 })), null);
-  assert.equal(estimateMinutes(note({})), null);
-  assert.equal(estimateMinutes(note({ estimatePomo: 0, estimateDuration: 30 })), 30);
+  assert.equal(estimateOf(note({ estimatePomo: 0 })).minutes, null);
+  assert.equal(estimateOf(note({ estimatePomo: 0 })).source, null);
+  assert.equal(estimateOf(note({})).minutes, null);
 });
 
-test('预计耗时：estimatedDuration 作备选，单位按分钟处理（这是假设）', () => {
-  assert.equal(estimateMinutes(note({ estimateDuration: 30 })), 30);
-  // 番茄数优先于时长。
-  assert.equal(estimateMinutes(note({ estimatePomo: 2, estimateDuration: 5 })), 50);
-  // 两个都没有 → 未估算。
-  assert.equal(estimateMinutes(note({ estimateDuration: 0 })), null);
+test('预计耗时：estimateDuration 的单位是秒——除以 60 折成分钟', () => {
+  // 滴答 CLI 的 `task update --help` 写明：`--estimated-duration <seconds> 预计专注时长（秒）`。
+  // 快照上这个字段叫 `estimateDuration`（滴答那边它在 `focusSummaries` 里，不在顶层）。
+  assert.equal(estimateOf(note({ estimateDuration: 1800 })).minutes, 30);
+  assert.equal(estimateOf(note({ estimateDuration: 120 })).minutes, 2);
+  assert.equal(estimateOf(note({ estimateDuration: 90 })).minutes, 1.5);
+  assert.equal(estimateOf(note({ estimateDuration: 1800 })).source, 'estimatedDuration');
+  // 秒换算成分钟不留下浮点尾巴。
+  assert.equal(estimateOf(note({ estimateDuration: 100 })).minutes, 1.67);
+});
+
+test('预计耗时：estimateDuration 优先于番茄数', () => {
+  // 两个都有时按时长走——它比「几个番茄」更接近真实时长。
+  const estimate = estimateOf(note({ estimatePomo: 2, estimateDuration: 1800 }));
+  assert.equal(estimate.minutes, 30);
+  assert.equal(estimate.source, 'estimatedDuration');
+});
+
+test('预计耗时：两个都没有 → 未估算', () => {
+  assert.equal(estimateOf(note({ estimateDuration: 0 })).minutes, null);
+  assert.equal(estimateOf(note({ estimatePomo: 0, estimateDuration: 0 })).minutes, null);
 });
 
 test('预计耗时：便贴上没有估时字段就是未估算', () => {
-  assert.equal(estimateMinutes(note()), null);
-  assert.equal(estimateMinutes(null), null);
+  assert.equal(estimateOf(note()).minutes, null);
+  assert.equal(estimateOf(null).minutes, null);
 });
 
 test('装得下：估时不超过今日剩余可排时间就是装得下', () => {

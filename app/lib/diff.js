@@ -5,7 +5,7 @@
  * 才播对应动画。不演「时间流逝」，也不演假的进度。
  *
  * 差异基准存在浏览器本地（localStorage），不落仓库文件——所以这一层只负责算差异，
- * 存哪儿由调用方决定（见 `client.js` 的 `MOTION_KEY`）。
+ * 存哪儿由调用方决定（见 `client.js` 的 `MOTION_BASELINE_KEY`）。
  */
 
 /**

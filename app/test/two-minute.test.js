@@ -122,7 +122,8 @@ function capture(overrides = {}) {
     startLocal: null,
     priority: 0,
     estimatePomo: null,
-    estimateDuration: 2,
+    // 专注时长的单位是**秒**：120 秒 = 两分钟。
+    estimateDuration: 120,
     ...overrides,
   };
 }
@@ -150,7 +151,8 @@ function action(overrides = {}) {
     startLocal: null,
     priority: 0,
     estimatePomo: null,
-    estimateDuration: 30,
+    // 专注时长的单位是**秒**：1800 秒 = 三十分钟。
+    estimateDuration: 1800,
     ...overrides,
   };
 }
@@ -184,11 +186,11 @@ test('两分钟卡：估时为 null（未估算）不算两分钟', () => {
 
 test('两分钟卡：估时超过两分钟不算两分钟', () => {
   const containers = [
-    container('inbox', [capture({ estimateDuration: 5 })]),
+    container('inbox', [capture({ estimateDuration: 300 })]),
     container('execution', [action()]),
   ];
   const ctx = judgeContext(containers);
-  assert.deepEqual(eligibilityOf(capture({ estimateDuration: 5 }), 'inbox', ctx), {
+  assert.deepEqual(eligibilityOf(capture({ estimateDuration: 300 }), 'inbox', ctx), {
     eligible: false,
     reason: '收集箱未明晰',
   });
@@ -215,12 +217,12 @@ test('两分钟卡：估时按滴答的番茄估算折算（估时 = 番茄数 �
 
 test('两分钟卡：阈值来自上下文，不写死在判断里', () => {
   const containers = [
-    container('inbox', [capture({ estimateDuration: 4 })]),
+    container('inbox', [capture({ estimateDuration: 240 })]),
     container('execution', [action()]),
   ];
   const ctx = judgeContext(containers, { policy: { maxMinutes: 5 } });
   assert.equal(ctx.twoMinute.maxMinutes, 5);
-  assert.deepEqual(eligibilityOf(capture({ estimateDuration: 4 }), 'inbox', ctx), {
+  assert.deepEqual(eligibilityOf(capture({ estimateDuration: 240 }), 'inbox', ctx), {
     eligible: true,
     reason: null,
   });

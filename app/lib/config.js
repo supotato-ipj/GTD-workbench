@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DEFAULT_CAPACITY_CONFIG, WINDOW_KINDS } from './capacity.js';
+import { DEFAULT_CAPACITY_CONFIG, WINDOW_KINDS, minutesOfClock } from './capacity.js';
 import { CONTAINERS } from './containers.js';
 import { DEFAULT_TWO_MINUTE_POLICY } from './focus-guide.js';
 
@@ -104,14 +104,14 @@ function isNonNegativeNumber(value) {
 
 /**
  * 时刻文本（`HH:mm`）合不合法。
+ *
+ * 合法性判据只有一处（`app/lib/capacity.js` 的 `minutesOfClock`）：它把时刻读成
+ * 当天第几分钟，读不出来就是非法。**别在这里再写一份正则**——两份正则迟早漂。
  * @param {unknown} text - 时刻文本。
  * @returns {boolean} 合法就是 true。
  */
 function isClockText(text) {
-  if (typeof text !== 'string') return false;
-  const matched = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
-  if (matched === null) return false;
-  return Number(matched[1]) <= 24 && Number(matched[2]) <= 59;
+  return minutesOfClock(text) !== null;
 }
 
 /**
@@ -150,12 +150,13 @@ function isValidSegment(segment) {
 
 /**
  * 时刻文本换算成当天第几分钟（只在校验里用，文本已确认合法）。
+ *
+ * 换算只有一处（`app/lib/capacity.js` 的 `minutesOfClock`）。
  * @param {string} text - 时刻文本。
  * @returns {number} 分钟数。
  */
 function clockMinutesOf(text) {
-  const matched = /^(\d{1,2}):(\d{2})$/.exec(String(text).trim());
-  return Number(matched[1]) * 60 + Number(matched[2]);
+  return minutesOfClock(text);
 }
 
 /**

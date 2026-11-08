@@ -136,7 +136,7 @@ test('markdown：标题里没编号时回退到关键词', () => {
   // 滴答里这条叫「08:00 自学 20 分钟」，没有 ⑧，靠关键词「自学」对上。
   assert.equal(matchRecordNumber('08:00 自学 20 分钟', records), '⑧');
   // 一个关键词都压不中就诚实地返回 null。
-  assert.equal(matchRecordNumber('邵川让我帮忙查几个案子的发案单位', records), null);
+  assert.equal(matchRecordNumber('同事甲让我帮忙查几个案子的发案单位', records), null);
 });
 
 test('markdown：没有记录时匹配返回 null，不抛', () => {

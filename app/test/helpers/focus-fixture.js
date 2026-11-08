@@ -85,19 +85,19 @@ export function withFocus(snapshot, patch) {
  *
  * 两分钟规则的参数显式给：本机有没有 `local-config.json` 不该决定渲染层断言的结果。
  * @param {object} [options] - 选项。
- * @param {number} [options.estimateMinutes] - 给那条捕获的估算分钟；不给就是 2 分钟。
+ * @param {number} [options.estimateSeconds] - 给那条捕获的专注时长（**秒**）；不给就是两分钟（120 秒）。
  * @param {number} [options.status] - 那条捕获的滴答状态（默认未完成；2 = 已勾完成）。
  * @param {string} [options.now] - 生成时刻（ISO）；默认落在日回顾窗口内。
  * @returns {Promise<object>} 快照。
  */
 export async function twoMinuteSnapshotUnderTest({
-  estimateMinutes = 2,
+  estimateSeconds = 120,
   status = 0,
   now = IN_REVIEW_WINDOW,
 } = {}) {
   const tasks = rawTasks.map((task) =>
     task.id === TWO_MINUTE_CAPTURE_ID
-      ? { ...task, status, focusSummaries: { estimatedDuration: estimateMinutes } }
+      ? { ...task, status, focusSummaries: { estimatedDuration: estimateSeconds } }
       : task,
   );
   const handler = createTasksHandler({

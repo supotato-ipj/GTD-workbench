@@ -45,17 +45,17 @@ const POLICY = {
 /**
  * 造一份带两分钟估算的夹具。
  * @param {object} [options] - 选项。
- * @param {number} [options.estimateMinutes] - 给收集箱那条捕获的估算分钟；不给就不加估算。
+ * @param {number} [options.estimateSeconds] - 给收集箱那条捕获的专注时长（**秒**）；不给就不加估算。
  * @param {number} [options.status] - 那条捕获的滴答状态（默认未完成）。
  * @returns {object[]} 原始任务。
  */
-function tasksWith({ estimateMinutes = 2, status = 0 } = {}) {
+function tasksWith({ estimateSeconds = 120, status = 0 } = {}) {
   return rawTasks.map((task) =>
     task.id === CAPTURE_ID
       ? {
           ...task,
           status,
-          focusSummaries: { estimatedDuration: estimateMinutes },
+          focusSummaries: { estimatedDuration: estimateSeconds },
         }
       : task,
   );

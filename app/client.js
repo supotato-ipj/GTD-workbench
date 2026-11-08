@@ -106,6 +106,9 @@ window.__ModuleLoader__.load({
       focusCardEmpty: '现在没有一件该做的事',
       /* v2:two-minute 两分钟卡（issue #11）：Host 说是两分钟卡，这里只画一句引导。 */
       focusCardTwoMinute: '两分钟卡：直接做掉、别判定',
+      /* v2:project 卡脚（规格故事 22–24）：这一件在哪条项目线上。 */
+      focusCardFootProjectLabel: '项目',
+      focusCardFootProjectLink: '项目清单 →',
       /* v2:write 完成写口（issue #9）：完成 = 滴答勾选，单口径。 */
       focusCompleteLabel: '完成',
       focusCompletePending: '完成中…',
@@ -222,6 +225,9 @@ window.__ModuleLoader__.load({
       focusCardEmpty: 'Nothing to do right now',
       /* v2:two-minute 两分钟卡（issue #11）：Host 说是两分钟卡，这里只画一句引导。 */
       focusCardTwoMinute: 'Two-minute card: do it now, skip deciding',
+      /* v2:project card foot (spec stories 22-24): which project line this belongs to. */
+      focusCardFootProjectLabel: 'Project',
+      focusCardFootProjectLink: 'Project list →',
       focusCompleteLabel: 'Done',
       focusCompletePending: 'Completing…',
       focusCompleteRefreshFailed: 'Completed, but refreshing failed',
@@ -729,6 +735,10 @@ window.__ModuleLoader__.load({
      *
      * 项目**不画成便贴**——项目一旦变成一摞便贴，画布就会诱导人给项目挂子任务，
      * 那是 ADR-0004 明写的警戒线（ADR-0007 沿用）。
+     *
+     * **点箱签开抽屉**（规格故事 24）：抽屉里是那个项目的 markdown 记录页——
+     * 「为什么这么定／验收标准／卡在谁手上」。项目与动作之间没有关联字段，
+     * 这条记录页是项目这一层唯一的说明。
      * @param {object} props - props。
      * @returns {object} React 元素。
      */
@@ -736,6 +746,8 @@ window.__ModuleLoader__.load({
       const note = props.note;
       const t = props.t;
       const nextStep = typeof note.nextStep === 'string' && note.nextStep.length > 0 ? note.nextStep : null;
+      /* gtd:05 抽屉的入口与便贴同一套：可点、可聚焦（回调由面板经 context 递下来）。 */
+      const openNote = React.useContext(NoteOpenContext);
       return h(
         'div',
         {
@@ -743,6 +755,18 @@ window.__ModuleLoader__.load({
           'data-role': 'box-tag',
           'data-note-id': note.id,
           title: nextStep === null ? note.title : `${note.title}｜${t('nextStepLabel')}：${nextStep}`,
+          /* 箱签是项目记录页的入口：可点、可聚焦。 */
+          role: 'button',
+          tabIndex: 0,
+          'aria-label': note.title,
+          onClick: () => {
+            if (typeof openNote === 'function') openNote(note);
+          },
+          onKeyDown: (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            if (typeof openNote === 'function') openNote(note);
+          },
           style: {
             display: 'flex',
             flexDirection: 'column',
@@ -754,6 +778,7 @@ window.__ModuleLoader__.load({
             border: '1px solid var(--dsw-alias-border-l2)',
             background: 'var(--dsw-alias-bg-base)',
             boxShadow: '0 1px 2px rgba(0, 0, 0, 0.06)',
+            cursor: 'pointer',
             // 角标要绝对定位在箱签右上角。
             position: 'relative',
           },
@@ -980,7 +1005,10 @@ window.__ModuleLoader__.load({
       const open = notes.filter((note) => note.status === 0);
       /* gtd:02 项目画箱签、可能清单默认折叠 */
       const asTag = container.kind === BOX_KIND.TAG;
+      /* v2:project 被指到的那个纸箱（点卡脚的项目指针进来）：摆开着，不许折起来。 */
+      const focusTarget = props.focusTarget === true;
       const [collapsed, setCollapsed] = React.useState(container.collapsedByDefault === true);
+      const isCollapsed = focusTarget ? false : collapsed;
       const collapseToggle = container.collapsedByDefault === true;
       /* gtd:02 end */
       return h(
@@ -991,7 +1019,9 @@ window.__ModuleLoader__.load({
           'data-container': container.key,
           'data-container-name': container.name,
           'data-box-kind': asTag ? BOX_KIND.TAG : BOX_KIND.NOTE,
-          'data-collapsed': collapsed ? 'true' : 'false',
+          'data-collapsed': isCollapsed ? 'true' : 'false',
+          /* v2:project 这个纸箱是这次要看的那一个。 */
+          'data-focus-target': focusTarget ? 'true' : 'false',
           style: {
             position: 'relative',
             display: 'flex',
@@ -1056,7 +1086,7 @@ window.__ModuleLoader__.load({
                 {
                   type: 'button',
                   'data-role': 'box-toggle',
-                  'aria-expanded': collapsed ? 'false' : 'true',
+                  'aria-expanded': isCollapsed ? 'false' : 'true',
                   onClick: () => setCollapsed((value) => !value),
                   style: {
                     marginLeft: 'auto',
@@ -1069,7 +1099,7 @@ window.__ModuleLoader__.load({
                     cursor: 'pointer',
                   },
                 },
-                collapsed ? t('expandBox') : t('collapseBox'),
+                isCollapsed ? t('expandBox') : t('collapseBox'),
               )
             : null,
           h(
@@ -1099,7 +1129,7 @@ window.__ModuleLoader__.load({
           ),
         ),
         /* gtd:02 折叠成一条计数：可能清单默认不占版面，但条数看得见 */
-        collapsed
+        isCollapsed
           ? h(
               'p',
               {
@@ -1285,6 +1315,8 @@ window.__ModuleLoader__.load({
               completedCount: completedOf(container.key),
               motions: props.motions,
               enterBase: base,
+              /* v2:project 被指到的那个纸箱：摆开、标出来。 */
+              focusTarget: props.focusContainer === container.key,
             });
             const open = Array.isArray(container.notes) ? container.notes.filter((note) => note.status === 0).length : 0;
             base += open;
@@ -1977,7 +2009,13 @@ window.__ModuleLoader__.load({
           t,
           onOpen: props.onOpenNote,
         }),
-        h(WorkbenchBoard, { snapshot, t, motions: props.motions }),
+        h(WorkbenchBoard, {
+          snapshot,
+          t,
+          motions: props.motions,
+          /* v2:project 点卡脚的项目指针进来时，项目箱是那个要看清的纸箱。 */
+          focusContainer: props.focusContainer,
+        }),
         h(SunkArea, {
           sunk: snapshot !== null && typeof snapshot === 'object' ? snapshot.sunk : null,
           t,
@@ -2329,6 +2367,12 @@ window.__ModuleLoader__.load({
           ? card.estimateMinutes
           : null;
       const hint = card.capacityHint !== null && typeof card.capacityHint === 'object' ? card.capacityHint : null;
+      /* v2:project 卡脚的项目指针：Host 侧算好（靠 markdown 记录编号与项目箱箱签对上）。
+         没有就是 null——**推不出就不画卡脚**，Client 不自己猜。 */
+      const project =
+        card.project !== null && typeof card.project === 'object' && typeof card.project.name === 'string'
+          ? card.project
+          : null;
       const band = typeof card.timeBand === 'string' && card.timeBand.length > 0 ? card.timeBand : null;
       const dueText = typeof card.dueLocal === 'string' && card.dueLocal.length > 0 ? card.dueLocal : '—';
       /* v2:two-minute 两分钟卡（issue #11）：Host 说了算这张卡是不是两分钟卡
@@ -3028,6 +3072,66 @@ window.__ModuleLoader__.load({
                 : null,
             )
           : null,
+        /* v2:project 卡脚（规格故事 22–24）：这一件在哪条项目线上。
+           **推不出项目就不画这一行**——缺就是缺，不编（Host 侧算好 `card.project`）。 */
+        project === null
+          ? null
+          : h(
+              'div',
+              {
+                className: 'gtd-focus-card__foot',
+                'data-role': 'focus-card-foot',
+                style: {
+                  marginTop: '14px',
+                  paddingTop: '10px',
+                  borderTop: '1px solid var(--dsw-alias-border-l2)',
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                },
+              },
+              h(
+                'span',
+                {
+                  'data-role': 'focus-card-foot-label',
+                  style: { fontSize: '11px', lineHeight: '16px', color: 'var(--dsw-alias-label-caption)' },
+                },
+                t('focusCardFootProjectLabel'),
+              ),
+              h(
+                'span',
+                {
+                  'data-role': 'focus-card-foot-project',
+                  'data-record': project.record,
+                  style: { fontSize: '12.5px', lineHeight: '19px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
+                },
+                project.name,
+              ),
+              /* 「项目清单 →」：点它打开下钻层并把项目箱摆在那儿（故事 23）。 */
+              h(
+                'button',
+                {
+                  type: 'button',
+                  'data-role': 'focus-card-foot-project-link',
+                  onClick: () => {
+                    if (typeof props.onOpenProject === 'function') props.onOpenProject(project);
+                  },
+                  style: {
+                    marginLeft: 'auto',
+                    padding: '0',
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--dsw-alias-label-secondary)',
+                    font: 'inherit',
+                    fontSize: '12px',
+                    lineHeight: '19px',
+                    cursor: 'pointer',
+                  },
+                },
+                t('focusCardFootProjectLink'),
+              ),
+            ),
       );
     }
 
@@ -3237,46 +3341,11 @@ window.__ModuleLoader__.load({
             t,
             motions: props.motions,
             onOpenNote: props.onOpenNote,
+            /* v2:project 下钻层里要盯住的纸箱（点卡脚的项目指针 → 项目箱）。 */
+            focusContainer: props.focusContainer,
           }),
         ),
       );
-    }
-
-    /**
-     * 把一条「接下来」窄条升成主卡。
-     *
-     * 窄条上只有标题与时限，所以升上来的卡**只有工作内容与完成时限**——
-     * 完成要求与预计耗时缺了就少一行（这是降级，不是整卡消失）。
-     * @param {object} item - 窄条。
-     * @param {object} capacity - 快照里的容量（剩余时间的出处）。
-     * @returns {object} 行动卡形状的对象。
-     */
-    function asFocusCard(item, capacity) {
-      if (item !== null && typeof item === 'object' && item.capacityHint !== undefined) return item;
-      const source = capacity !== null && typeof capacity === 'object' ? capacity : {};
-      return {
-        id: item.id,
-        title: item.title,
-        container: item.container ?? null,
-        containerName: item.containerName ?? null,
-        timeBand: item.timeBand ?? null,
-        dueLocal: item.dueLocal ?? null,
-        dueDate: item.dueDate ?? null,
-        dueTime: item.dueTime ?? null,
-        dueAllDay: item.dueAllDay === true,
-        overdue: item.overdue === true,
-        record: item.record ?? null,
-        requirement: { text: null, source: null },
-        estimateMinutes: null,
-        estimateSource: null,
-        /* 「接下来」里的窄条都是已判定的动作，不是两分钟卡（两分钟卡不进队列）。 */
-        twoMinute: false,
-        capacityHint: {
-          fits: null,
-          remainingMinutes: minutesOf(source.remainingMinutes),
-          schedulableMinutes: minutesOf(source.schedulableMinutes),
-        },
-      };
     }
 
     /**
@@ -3303,9 +3372,12 @@ window.__ModuleLoader__.load({
       /* 视图内状态：换过的主卡与队列、下钻开关。刷新换快照时一并复位。 */
       const [override, setOverride] = React.useState(null);
       const [drilled, setDrilled] = React.useState(false);
+      /* v2:project 下钻层里要盯住哪个纸箱（点卡脚的项目指针 → 项目箱）。 */
+      const [drillFocus, setDrillFocus] = React.useState(null);
       React.useEffect(() => {
         setOverride(null);
         setDrilled(false);
+        setDrillFocus(null);
       }, [snapshot]);
 
       const baseCard = focus !== null && focus.card !== null && typeof focus.card === 'object' ? focus.card : null;
@@ -3334,7 +3406,9 @@ window.__ModuleLoader__.load({
             : null;
       /* 原来就没有主卡时不该凭空造一张：只有「主卡被跳过」才顺延。 */
       const hadCard = overrideCard !== null || fallbackCard !== null;
-      const card = wanted !== null ? wanted : hadCard && pool.length > 0 ? asFocusCard(pool[0], capacity) : null;
+      /* v2:project 窄条与主卡是**同一份形状**（Host 算好随快照过界）：
+         换主卡时直接把窄条拿过来用，Client 不重造一遍（重造就会漂）。 */
+      const card = wanted !== null ? wanted : hadCard && pool.length > 0 ? pool[0] : null;
       const queue = card !== null && pool[0] !== undefined && pool[0].id === card.id ? pool.slice(1) : pool;
 
       /**
@@ -3344,9 +3418,16 @@ window.__ModuleLoader__.load({
       const pickFromQueue = (item) => {
         const rest = queue.filter((entry) => entry.id !== item.id);
         setOverride({
-          card: asFocusCard(item, capacity),
+          card: item,
           queue: card === null ? rest : [card, ...rest],
         });
+      };
+
+      /* v2:project 点卡脚的项目指针 → 打开下钻层，并把项目箱摆在那儿（故事 23）。
+         只是视图内状态：不写任何数据。 */
+      const openProject = () => {
+        setDrillFocus('project');
+        setDrilled(true);
       };
 
       const asOfText =
@@ -3475,6 +3556,8 @@ window.__ModuleLoader__.load({
                     onReschedule: props.onReschedule,
                     onSkip: props.onSkip,
                     onRefresh: props.onReload,
+                    /* v2:project 卡脚：点「项目清单 →」打开下钻层并把项目箱摆在那儿。 */
+                    onOpenProject: openProject,
                   }),
                   /* v2:write 跳过之后说清楚它去哪了：零写入，只在本次会话里。 */
                   skipped.length > 0
@@ -3538,6 +3621,8 @@ window.__ModuleLoader__.load({
                 t,
                 motions: props.motions,
                 onOpenNote: props.onOpenNote,
+                /* v2:project 点卡脚的项目指针进来时，项目箱是那个要看清的纸箱。 */
+                focusContainer: drillFocus,
                 onClose: () => setDrilled(false),
               })
             : null,

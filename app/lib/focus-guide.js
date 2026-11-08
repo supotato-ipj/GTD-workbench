@@ -12,8 +12,9 @@
  * 渲染层只负责画：资格与顺序都随快照过界（与分段、违规、主攻同一层）。
  */
 
-import { estimateOf, minutesOfClock } from './capacity.js';
+import { DEFAULT_CAPACITY_CONFIG, estimateOf, minutesOfClock } from './capacity.js';
 import { isFocusNote } from './focus.js';
+import { projectPointerOf } from './project.js';
 import { requirementOf } from './requirement.js';
 
 /**
@@ -34,20 +35,17 @@ export const INELIGIBLE_REASONS = [
 ];
 
 /**
- * 一条动作的预计耗时（分钟），按容量参数里的番茄分钟折算。
- * @param {object} note - 便贴。
+ * 上下文里的番茄分钟（估时的折算单位）。
+ *
+ * 番茄分钟是**容量参数**的一部分（ADR-0011）：上下文里没带就用通用默认值。
  * @param {object} context - 上下文（带 capacity）。
- * @returns {number | null} 分钟数；未估算时为 null。
+ * @returns {number} 番茄分钟数。
  */
-/**
- * 一条动作的预计耗时（分钟），按上下文里的容量参数（番茄分钟）折算。
- * @param {object} note - 便贴。
- * @param {object} context - 上下文（带 capacity）。
- * @returns {{ minutes: number | null, source: string | null }} 分钟数与来源；未估算时 minutes 为 null。
- */
-function estimateIn(note, context) {
-  const pomodoro = context?.capacity?.pomodoroMinutes;
-  return estimateOf(note, { pomodoroMinutes: typeof pomodoro === 'number' ? pomodoro : 25 });
+function pomodoroOf(context) {
+  const value = context?.capacity?.pomodoroMinutes;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : DEFAULT_CAPACITY_CONFIG.番茄分钟;
 }
 
 /**
@@ -223,7 +221,7 @@ function fitsTwoMinute(note, context) {
   if (option.enabled !== true) return false;
   // 不在日回顾窗口内，或深度块正在跑 → 不抢主卡位（不报错、不空转）。
   if (option.allowed !== true) return false;
-  const minutes = estimateIn(note, context).minutes;
+  const minutes = estimateOf(note, { pomodoroMinutes: pomodoroOf(context) }).minutes;
   if (minutes === null) return false;
   const max =
     typeof option.maxMinutes === 'number' && Number.isFinite(option.maxMinutes) && option.maxMinutes > 0
@@ -491,17 +489,20 @@ function pickCard(ranked, context) {
 }
 
 /**
- * 装配主卡。
+ * 行动卡与「接下来」窄条**共用**的那几个字段。
+ *
+ * 形状只有这一份：主卡与「接下来」里那些被提升上来的窄条长得一样，
+ * Client 侧直接用快照里 Host 给的字段，**不再自己重造一遍**（重造就会漂）。
  * @param {object} note - 便贴。
  * @param {string} containerKey - 容器标识。
  * @param {string} containerName - 容器名。
  * @param {object} context - 上下文。
  * @param {object} [options] - 选项。
- * @param {boolean} [options.twoMinute] - 这张卡是不是两分钟卡（收集箱里直接做掉的那种）。
- * @returns {object} 行动卡。
+ * @param {object | null} [options.project] - 卡脚的项目指针；推不出就是 null。
+ * @returns {object} 卡片字段。
  */
-function cardOf(note, containerKey, containerName, context, { twoMinute = false } = {}) {
-  const estimate = estimateIn(note, context);
+function cardFieldsOf(note, containerKey, containerName, context, { project = null } = {}) {
+  const estimate = estimateOf(note, { pomodoroMinutes: pomodoroOf(context) });
   const remaining = context.capacity?.remainingMinutes ?? 0;
   const deepCap = context.capacity?.deepDailyCapMinutes ?? 0;
   // 深度动作还要受单日深度上限约束。
@@ -511,9 +512,6 @@ function cardOf(note, containerKey, containerName, context, { twoMinute = false 
     title: note.title,
     container: containerKey,
     containerName,
-    // 两分钟卡的引导标记：true = 这条是收集箱里「两分钟就能做完」的捕获，
-    // 应当**直接做掉、别判定**。文案归 Client，Host 只给这个标记与事实。
-    twoMinute: twoMinute === true,
     timeBand: note.timeBand ?? null,
     dueLocal: note.dueLocal ?? null,
     dueDate: note.dueDate ?? null,
@@ -534,30 +532,51 @@ function cardOf(note, containerKey, containerName, context, { twoMinute = false 
       remainingMinutes: remaining,
       schedulableMinutes: context.capacity?.schedulableMinutes ?? 0,
     },
+    // 卡脚的项目指针（规格故事 22–24）：推不出就是 null——缺就是缺，不编。
+    project,
+  };
+}
+
+/**
+ * 装配主卡。
+ * @param {object} note - 便贴。
+ * @param {string} containerKey - 容器标识。
+ * @param {string} containerName - 容器名。
+ * @param {object} context - 上下文。
+ * @param {object} [options] - 选项。
+ * @param {boolean} [options.twoMinute] - 这张卡是不是两分钟卡（收集箱里直接做掉的那种）。
+ * @param {object | null} [options.project] - 卡脚的项目指针。
+ * @returns {object} 行动卡。
+ */
+function cardOf(note, containerKey, containerName, context, { twoMinute = false, project = null } = {}) {
+  return {
+    ...cardFieldsOf(note, containerKey, containerName, context, { project }),
+    // 两分钟卡的引导标记：true = 这条是收集箱里「两分钟就能做完」的捕获，
+    // 应当**直接做掉、别判定**。文案归 Client，Host 只给这个标记与事实。
+    twoMinute: twoMinute === true,
   };
 }
 
 /**
  * 装配「接下来」窄条队列里的一条。
+ *
+ * 字段与主卡**同一份**（`cardFieldsOf`）：点一条窄条把它换成主卡时，
+ * 换上来的卡带的是 Host 算好的那些事实，Client 不重造。
  * @param {object} note - 便贴。
  * @param {string} containerKey - 容器标识。
  * @param {string} containerName - 容器名。
  * @param {'action' | 'daily'} kind - 是动作还是日清项。
+ * @param {object} context - 上下文。
+ * @param {object} [options] - 选项。
+ * @param {object | null} [options.project] - 卡脚的项目指针。
  * @returns {object} 窄条。
  */
-function nextOf(note, containerKey, containerName, kind) {
+function nextOf(note, containerKey, containerName, kind, context, { project = null } = {}) {
   return {
-    id: note.id,
-    title: note.title,
+    ...cardFieldsOf(note, containerKey, containerName, context, { project }),
     kind,
-    container: containerKey,
-    containerName,
-    timeBand: note.timeBand ?? null,
-    dueLocal: note.dueLocal ?? null,
-    dueDate: note.dueDate ?? null,
-    dueTime: note.dueTime ?? null,
-    overdue: note.overdue === true,
-    record: note.record ?? null,
+    /* 「接下来」里的窄条都是已判定的动作，不是两分钟卡（两分钟卡不进队列）。 */
+    twoMinute: false,
   };
 }
 
@@ -680,10 +699,16 @@ export function focusGuideOf(containers, context) {
   const arrived = dailyEntries.filter((entry) => dailyArrived(entry.note, ctx2));
   const rest = kept.filter((note) => cardNote === null || note.id !== cardNote.id);
   const next = [
-    ...arrived.map((entry) => nextOf(entry.note, entry.containerKey, entry.containerName, 'daily')),
+    ...arrived.map((entry) =>
+      nextOf(entry.note, entry.containerKey, entry.containerName, 'daily', ctx2, {
+        project: projectPointerOf(entry.note.record, groups),
+      }),
+    ),
     ...rest.map((note) => {
       const entry = byId.get(note.id);
-      return nextOf(note, entry?.containerKey ?? '', entry?.containerName ?? '', 'action');
+      return nextOf(note, entry?.containerKey ?? '', entry?.containerName ?? '', 'action', ctx2, {
+        project: projectPointerOf(note.record, groups),
+      });
     }),
   ].slice(0, NEXT_QUEUE_LIMIT);
 
@@ -709,6 +734,8 @@ export function focusGuideOf(containers, context) {
         ? null
         : cardOf(cardEntry.note, cardEntry.containerKey, cardEntry.containerName, ctx2, {
             twoMinute: twoMinuteNote !== null && cardEntry.note.id === twoMinuteNote.id,
+            // 卡脚的项目指针：靠 markdown 记录编号与项目箱箱签的编号对上（app/lib/project.js）。
+            project: projectPointerOf(cardEntry.note.record, groups),
           }),
     next,
     reminders,

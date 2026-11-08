@@ -123,9 +123,9 @@ test('接缝 B：抓一张具体便贴——过期未完成归「今天」', asy
   const todaySegment = execution.segments.find((segment) => segment.segment === 'today');
   assert.ok(todaySegment, '执行箱里没有「今天」段');
   assert.equal(todaySegment.title, '今天');
-  // 追问业务部截止 11/4（已过期）、⑥ 汇总截止 11/5（今天）、文书传递截止 11/4（已过期）。
+  // 追问运营部截止 11/4（已过期）、⑥ 汇总截止 11/5（今天）、文书传递截止 11/4（已过期）。
   assert.deepEqual(todaySegment.noteIds, [
-    '6ad5b0aa1e4b0c399cc072706',
+    '7c4e0000000000000000000a',
     '7c4e0000000000000000000b',
     '7c4e0000000000000000000d',
   ]);
@@ -169,7 +169,7 @@ test('接缝 B：无截止时间的条目有明确归属，不静默消失', asy
   const snapshot = await snapshotUnderTest();
   const document = await renderBoard(snapshot);
   // 项目箱画的是箱签，不排时间轴（ADR-0007：项目不是一摞按天排的动作），所以两条都直接画出来。
-  // 「郑某案件·代理律师定标」没有截止日——它仍然在画布上，没有静默消失。
+  // 「当事人某案件·代理律师定标」没有截止日——它仍然在画布上，没有静默消失。
   const projectBox = document.querySelector('[data-role="box"][data-container="project"]');
   const projectIds = [...projectBox.querySelectorAll('[data-note-id]')].map((node) => node.getAttribute('data-note-id'));
   assert.deepEqual(projectIds, ['7c4e00000000000000000007', '7c4e00000000000000000011']);

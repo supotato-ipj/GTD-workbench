@@ -37,7 +37,7 @@ export function apply(ctx) {
     capacityConfig: () => readCapacityConfig(),
   };
   const handler = createTasksHandler(shared);
-  // 写方向：写动作的执行由 CLI 层注入（现在只有「完成」一个动作类型）。
+  // 写方向：写动作的执行由 CLI 层注入（「完成」与「改期」两个动作类型）。
   const actionsHandler = createActionsHandler({ ...shared, runAction: runDidaAction });
   ctx.effect(
     () =>

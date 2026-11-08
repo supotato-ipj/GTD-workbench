@@ -155,6 +155,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | `lib/timeline.js` | 天刻度四段（今天／明天／本周／以后）与默认视野 |
 | `lib/focus.js` | **本周主攻**推导（只认滴答的 `深度` 标签，不读手写名单）；快照字段是 `mainPush` |
 | `lib/focus-guide.js` | **焦点**推导：资格（八条）→ 排序（五组）→ 主卡／「接下来」／提醒位（纯函数） |
+| `lib/project.js` | **卡脚的项目指针**：靠 markdown 记录编号与项目箱箱签的编号对上（纯函数，推不出就是 `null`） |
 | `lib/capacity.js` | 容量计算：可排时间、剩余时间、深度名额、预计耗时（纯函数，只存输入不存推导值） |
 | `capacity.schema.json` | 容量参数的 **schema**（JSON Schema）：字段形状 + 虚构示例；真实数值不进本仓库 |
 | `lib/rules.js` | 规则角标的四项检查 |
@@ -202,7 +203,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | 层 | DOM 角色 | 内容 |
 |---|---|---|
 | ① 顶部常驻 | `focus-top` / `focus-stat`（`data-stat="daily｜remaining｜deep-quota"`） | 今日日清几笔未还、今日剩余可排时间、深度名额；下面一行 `focus-capacity-bar` 里是 `focus-capacity-asof`（「容量参数定于 <日期>」，没初始化时 `data-state="unset"`）与 `focus-capacity-outside`（窗口外的那笔日清不占可排时间） |
-| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`（来源标记 `focus-card-requirement-source`，写成「来自记录页」）、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity`；事实行之下是三个控件 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入） |
+| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`（来源标记 `focus-card-requirement-source`，写成「来自记录页」）、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity`；事实行之下是三个控件 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入）；**卡脚** `focus-card-foot`（项目名 `focus-card-foot-project` + 入口 `focus-card-foot-project-link`）——推不出项目就不画这一行 |
 | ③「接下来」窄条 | `focus-next` / `focus-next-item`（`data-note-ref`） | 只写标题与时限；**点一条即换主卡**（视图内状态，不写任何数据） |
 | ④ 下钻层 | `focus-drill-entry` / `focus-drill` / `focus-back` | 点开后是 v1 的六箱画布原样，带一个「回到焦点」 |
 
@@ -226,6 +227,41 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
   它与记录页那一段的「验收标准」**层级不同、可以并存**，但**同一段文字只画一遍**
   （画了两遍就是噪音）；这条动作没有完成要求时写「未写完成要求」。
 
+## 卡脚的项目指针（规格故事 22–24）
+
+卡脚那一行回答的是「**我做这一件的时候，它在哪条线上**」。
+
+**数据现实**：滴答里项目与动作之间**没有关联字段**（项目不带子任务，动作也不指向项目），
+所以指针靠既有口径推——**markdown 记录编号**（①–⑨）与**项目箱箱签标题的编号**对上：
+
+```
+动作的记录编号（focus.card.record，①–⑨） == 项目箱里那张箱签标题的编号 → 那张箱签就是它的项目
+```
+
+推导在 Host 侧（`lib/project.js` 的 `projectPointerOf`，纯函数），结果随快照过界：
+
+| 字段 | 含义 |
+|---|---|
+| `focus.card.project.id` | 项目箱里那张箱签的 id |
+| `focus.card.project.name` | 项目名（箱签标题去掉开头的编号字符） |
+| `focus.card.project.record` | 对上的那个编号（①–⑨） |
+
+- **推不出就是 `null`**：动作没有记录编号、或编号对不上任何一张箱签时，
+  `focus.card.project` 是 `null`，卡脚**整行不画**——缺就是缺，不编。
+
+三个入口（都在 Client 侧，只画不算）：
+
+| 入口 | DOM | 结果 |
+|---|---|---|
+| 卡脚上的项目指针 | `focus-card-foot` / `focus-card-foot-project` | 写着「项目 &lt;项目名&gt;」 |
+| 点卡脚上的「项目清单 →」 | `focus-card-foot-project-link` | 打开**下钻层**并把**项目箱**摆开、标出来（`[data-role="box"][data-container="project"][data-focus-target="true"][data-collapsed="false"]`）——那是项目清单的全貌（纸箱 + 箱签 + 下一步指针） |
+| 点项目箱签 | `[data-role="box-tag"]` | 打开**抽屉**，里面是那个项目的 markdown 记录页（`drawer-record`）：为什么／验收标准／卡点 |
+
+- 下钻层与抽屉沿用 v1 既有组件与交互，不做改动；
+  项目箱签**从「贴着的标签」变成「可点的入口」**（可聚焦，回车／空格也能点），
+  这是它唯一新增的交互。
+- 这一整套都是**只读**的：不写任何数据、不写任何本地文件。
+
 ## 完成写口（Client 侧）
 
 行动卡上有一个克制的「完成」按钮（`data-role="focus-card-complete"`），在事实行之下、卡脚之上：
@@ -244,7 +280,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 
 ## 改期与跳过（Client 侧，issue #10）
 
-卡脚上那三个控件**位置分开**、不合并成一个「推迟」：完成（实心主按钮）与改期（描边次按钮）
+写口那一行上的三个控件**位置分开**、不合并成一个「推迟」：完成（实心主按钮）与改期（描边次按钮）
 是两个写口，跳过是**零写入**的弱化项，排在虚线分隔 `focus-card-actions-sep` 之后，
 自己还带着一句「零写入」（`focus-card-skip-note`）。
 
@@ -409,7 +445,7 @@ Client 只画不算。想在客户端复用 Host 侧的纯函数，只能在客�
 | 字段 | 形状 | 含义 |
 |---|---|---|
 | `focus.card` | 对象 \| `null` | 主位**行动卡**，至多一条 |
-| `focus.next` | 数组（0–4 条） | 「接下来」窄条队列 |
+| `focus.next` | 数组（0–4 条） | 「接下来」窄条队列。**与主卡同一份形状**（窄条上只画标题与时限，但底下带的是主卡那些字段），所以点一条换主卡时 Client 直接把它拿过来用，不重造 |
 | `focus.reminders` | 数组 | 等待清单里「到期没回」的提醒位（**不占主卡**） |
 | `today.daily` | 数组 | 今日日清项与状态（`未还清` / `已还清`） |
 | `today.remainingMinutes` | number | 今日剩余可排时间（分钟） |
@@ -422,6 +458,7 @@ Client 只画不算。想在客户端复用 Host 侧的纯函数，只能在客�
 | 每条便贴 `eligible` | boolean | 有没有资格进焦点 |
 | 每条便贴 `ineligibleReason` | 字符串 \| `null` | 没进焦点的原因（取值见下） |
 | `focus.card.requirement` | 对象 | 主卡上的完成要求：`text`（原文）+ `source`（来源标记） |
+| `focus.card.project` | 对象 \| `null` | **卡脚的项目指针**：`id`（项目箱里那张箱签）+ `name`（项目名）+ `record`（①–⑨ 编号）。推不出就是 `null`——**缺就是缺，不编** |
 | `focus.card.twoMinute` | boolean | 这张卡是不是**两分钟卡**（收集箱里「估时不超过两分钟就能做完」的捕获）。`false` = 正常动作。**Client 侧据此显示「直接做掉、别判定」的引导**，文案归 Client |
 | 每条便贴 `requirement` | 对象 | 这一条动作的完成要求：`text`（原文）+ `source`（来源标记）；**键不省**，没有时两个字段都是 `null` |
 
@@ -528,14 +565,19 @@ v2 的**焦点**是 `focus` 对象（`focus.card` / `focus.next`）。两者语�
 
 ## 预计耗时
 
-来源是滴答任务 JSON 里的 `focusSummaries.estimatedPomo` 与 `focusSummaries.estimatedDuration`
+来源是滴答任务 JSON 里的 `focusSummaries.estimatedDuration` 与 `focusSummaries.estimatedPomo`
 （**不在顶层**）：
 
-- 估时分钟 = `estimatedPomo` × 番茄分钟（**番茄分钟来自本机容量配置**，配置里没有就用通用默认值 25）；
-- `estimatedPomo` 为 0 或缺失 = **未估算**（快照里是 `null`，**不是 0 分钟**）；
-- `estimatedDuration` 作备选，**单位按分钟处理——这是一个假设**（滴答侧没有声明单位），
-  实测前请以真实数据核对一次；
+- **`estimatedDuration` 的单位是秒**——滴答 CLI 的 `task update --help` 写明
+  `--estimated-duration <seconds> 预计专注时长（秒）`；估时分钟 = 它 ÷ 60（保留两位小数）；
+- 没有这一项时 = `estimatedPomo` × 番茄分钟（**番茄分钟来自本机容量配置**，配置里没有就用通用默认值 25）；
+- **取值优先级：`estimatedDuration` 在前**（它比「几个番茄」更接近真实时长），番茄数作备选；
+- 两个都没有（或都为 0）= **未估算**（快照里是 `null`，**不是 0 分钟**）；
 - 不新增滴答标签、不新增滴答字段。
+
+估时的口径只有**一个入口**：`lib/capacity.js` 的 `estimateOf(note, { pomodoroMinutes })`。
+便贴、行动卡与「接下来」队列的估时都从它出，别处不再各算一份
+（口径的来由见 [ADR-0011](../docs/adr/0011-容量参数的初始化与调校.md) 的「修订（2026-11-08）」一节）。
 
 主卡上的 `estimateMinutes` 为 `null` 时，界面要说「未估算」，不能画成「0 分钟」。
 
@@ -579,10 +621,12 @@ GTD 的两分钟规则：**两分钟能做完就当场做掉，别放进系统�
 
 ### 估时口径
 
-- 只用滴答**已有的** `focusSummaries.estimatedPomo` / `focusSummaries.estimatedDuration`
+- 只用滴答**已有的** `focusSummaries.estimatedDuration` / `estimatedPomo`
   （见「预计耗时」一节）：**不新增滴答标签、不新增滴答字段**。
 - 「不超过两分钟」= `estimateMinutes !== null && estimateMinutes <= maxMinutes`。
 - **未估算（null）不算两分钟**——没估时就不能说它两分钟能做完。
+- **番茄数那条路够不着两分钟**：一个番茄最少 25 分钟（番茄分钟是参数，缺省 25），
+  永远大于两分钟——两分钟卡只能走**专注时长**那条路（120 秒 = 2 分钟）。
 - `maxMinutes` 是**参数**（默认 2），**不写死在判断逻辑里**：判断只读上下文/配置里的这个数。
 
 ### 引导标记

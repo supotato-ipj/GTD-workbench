@@ -75,6 +75,8 @@
   "focusNextEmpty": "接下来没有别的了",
   "focusCardEmpty": "现在没有一件该做的事",
   "focusCardTwoMinute": "两分钟卡：直接做掉、别判定",
+  "focusCardFootProjectLabel": "项目",
+  "focusCardFootProjectLink": "项目清单 →",
   "focusCompleteLabel": "完成",
   "focusCompletePending": "完成中…",
   "focusCompleteRefreshFailed": "已完成，但刷新失败",

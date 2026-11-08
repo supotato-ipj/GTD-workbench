@@ -216,7 +216,7 @@ test('焦点视图：点一条窄条，它就成了主卡（视图内状态，�
     assert.equal(cards.length, 1, '换主卡之后主位不止一张卡');
     assert.equal(cards[0].querySelector('[data-role="focus-card-title"]').textContent, picked.title);
     // 换主卡不写任何数据：快照没被动过。
-    assert.equal(snapshot.focus.card.title, '追问业务部：归期 + 5 课题反馈');
+    assert.equal(snapshot.focus.card.title, '追问运营部：归期 + 5 课题反馈');
   } finally {
     await env.unmount();
   }
