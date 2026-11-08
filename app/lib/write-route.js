@@ -23,9 +23,16 @@
 
 import { ActionError, locateInContainer, validateAction } from './actions.js';
 import { CONTAINERS } from './containers.js';
-import { readCapacityConfig } from './config.js';
+import { readCapacityConfig, readTwoMinutePolicy } from './config.js';
 import { OPEN_STATUS } from './snapshot.js';
-import { collectSnapshot, describeFailure, resolveCapacityConfig, resolveContainers, sendJson } from './route.js';
+import {
+  collectSnapshot,
+  describeFailure,
+  resolveCapacityConfig,
+  resolveContainers,
+  resolveTwoMinutePolicy,
+  sendJson,
+} from './route.js';
 
 /** 写路由的路径：顶层路径，带命名空间前缀。 */
 export const ACTIONS_ROUTE_PATH = '/gtd-workbench/actions';
@@ -90,6 +97,7 @@ async function locateTarget({ containers, runDida, taskId }) {
  * @param {() => Date} [options.now] - 生成时刻。
  * @param {object[] | (() => object[])} [options.containers] - 六个纸箱，默认六个容器（ADR-0007 的固定顺序）。
  * @param {object | (() => object)} [options.capacityConfig] - 容量配置，默认每次请求重读本机配置。
+ * @param {object | (() => object)} [options.twoMinutePolicy] - 两分钟规则参数，默认每次请求重读本机配置。
  * @param {() => object[]} [options.loadRecords] - 读 markdown 侧记录。
  * @param {(args: { projectIds: string[], startDate: string, endDate: string }) => Promise<object[]>} [options.runCompleted]
  *   按日期区间取已完成条目（已沉底区用）。
@@ -103,6 +111,7 @@ export function createActionsHandler({
   now = () => new Date(),
   containers = CONTAINERS,
   capacityConfig = () => readCapacityConfig(),
+  twoMinutePolicy = () => readTwoMinutePolicy(),
   loadRecords = () => [],
   runCompleted = async () => [],
 }) {
@@ -126,9 +135,10 @@ export function createActionsHandler({
       if (!parsed.ok) throw new ActionError(parsed.code, parsed.message);
       const { action, taskId, params } = parsed.value;
 
-      // 本次请求解析一次：找目标与写完刷新用的是同一份纸箱与容量口径。
+      // 本次请求解析一次：找目标与写完刷新用的是同一份纸箱、容量口径与两分钟规则。
       const resolvedContainers = resolveContainers(containers);
       const resolvedCapacity = resolveCapacityConfig(capacityConfig);
+      const resolvedTwoMinute = resolveTwoMinutePolicy(twoMinutePolicy);
 
       // 写动作要带清单 id（`dida task complete <清单 id> <动作 id>`）：
       // 先把目标动作找出来，顺带确认它存在——不存在就说「目标不存在」，不去瞎写。
@@ -160,6 +170,7 @@ export function createActionsHandler({
           timeZone,
           generatedAt: now(),
           capacityConfig: resolvedCapacity,
+          twoMinutePolicy: resolvedTwoMinute,
         });
       } catch (error) {
         // 写已经成功了，只是刷新没成：说清楚是「刷新失败」，别把它说成「写失败」。

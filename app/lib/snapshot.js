@@ -18,7 +18,11 @@
 import { BOX_RULES, DEFAULT_BOX_RULE, filterContainerNotes, nextStepOf } from './board.js';
 import { capacityFor } from './capacity.js';
 import { focusOf } from './focus.js';
-import { eligibilityOf, focusGuideOf } from './focus-guide.js';
+import {
+  DEFAULT_TWO_MINUTE_POLICY,
+  eligibilityOf,
+  focusGuideOf,
+} from './focus-guide.js';
 import { matchRecordNumber } from './markdown.js';
 import { requirementOf } from './requirement.js';
 import { withViolations } from './rules.js';
@@ -249,6 +253,10 @@ function dailyOf({ dailyOpen, completedTasks, timeZone, today }) {
  * @param {object[]} [options.records] - markdown 侧记录（Host 从仓库读的）。
  * @param {object[]} [options.completedTasks] - 已完成的原始任务（已沉底区用）。
  * @param {object} [options.capacityConfig] - 容量配置；不给就用通用默认值（ADR-0011）。
+ * @param {object} [options.twoMinutePolicy] - 两分钟规则的参数：`enabled`（开着没有）、
+ *   `maxMinutes`（阈值，分钟）、`reviewWindow`（日回顾窗口 `{ start, end }`）、
+ *   可选 `allowed: false`（否决位：显式不许）。
+ *   不给就用通用默认值（app/lib/focus-guide.js 的 DEFAULT_TWO_MINUTE_POLICY）。
  * @returns {object} 快照。
  */
 export function buildSnapshot({
@@ -260,6 +268,7 @@ export function buildSnapshot({
   records = [],
   completedTasks = [],
   capacityConfig,
+  twoMinutePolicy = DEFAULT_TWO_MINUTE_POLICY,
 }) {
   const todayText = typeof today === 'string' && today.length > 0 ? today : localDateText(new Date(generatedAt), timeZone);
   const recordList = Array.isArray(records) ? records : [];
@@ -301,15 +310,21 @@ export function buildSnapshot({
     capacity,
     // markdown 侧记录：主卡的完成要求与便贴上的那一份出自同一口径（app/lib/requirement.js）。
     records: recordList,
+    // 两分钟规则的参数（启用、阈值、日回顾窗口）。
+    // **不在这儿归一化**：归一化会丢掉 `allowed: false` 这个否决位。
+    twoMinute: twoMinutePolicy,
   };
   const guide = focusGuideOf(groups, guideContext);
   const pushed = new Set(guide.pushed);
   // 资格判断随便贴过界：每条便贴都带 eligible 与 ineligibleReason，
   // Client 半边只照着显示「为什么它没进焦点」，不重算资格。
+  // 用的上下文与焦点推导是**同一份**（含两分钟规则此刻的状态）——
+  // 两处口径不一致会出现「主卡是两分钟卡、画布上却说它没资格」。
+  const eligibilityContext = { ...guideContext, twoMinute: guide.twoMinute };
   const tagged = groups.map((group) => ({
     ...group,
     notes: group.notes.map((note) => {
-      const { eligible, reason } = eligibilityOf(note, group.key, guideContext);
+      const { eligible, reason } = eligibilityOf(note, group.key, eligibilityContext);
       // 深度名额用完的动作被推到明天——它今天没有资格，但原因要说得清。
       if (pushed.has(note.id)) return { ...note, eligible: false, ineligibleReason: '深度配额已用' };
       return { ...note, eligible, ineligibleReason: eligible ? null : reason };

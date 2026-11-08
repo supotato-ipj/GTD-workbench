@@ -10,6 +10,7 @@
  * - `容量`：整份容量参数（ADR-0011）。形状见 `app/capacity.schema.json`。
  * - `清单`：滴答清单 id，按纸箱 key 分（`inbox`／`project`／`execution`／`waiting`／
  *   `calendar`／`maybe`）→ 清单 id（字符串）。形状见 {@link readContainers}。
+ * - `两分钟`：两分钟规则的参数（启用、阈值、日回顾窗口）。形状见 {@link readTwoMinutePolicy}。
  *
  * 读不到、不是合法 JSON、不是对象——都当没有这份配置，走默认值，不抛。
  * 本地配置是可选的，缺它不该让工作台起不来。
@@ -23,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_CAPACITY_CONFIG, WINDOW_KINDS } from './capacity.js';
 import { CONTAINERS } from './containers.js';
+import { DEFAULT_TWO_MINUTE_POLICY } from './focus-guide.js';
 
 /** 仓库根：本文件在 `<repo>/app/lib/config.js`，往上两级。 */
 export const REPO_ROOT = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
@@ -35,6 +37,9 @@ export const CAPACITY_FIELD = '容量';
 
 /** 本机配置里放滴答清单 id 的字段名。 */
 export const CONTAINERS_FIELD = '清单';
+
+/** 本机配置里放两分钟规则参数的字段名。 */
+export const TWO_MINUTE_FIELD = '两分钟';
 
 /** 容量配置的顶层字段全集（与 `app/capacity.schema.json` 一致）。 */
 const CAPACITY_KEYS = ['定于', '窗口', '不可占', '日清', '插入损耗分钟', '深度', '番茄分钟'];
@@ -257,6 +262,58 @@ export function readCapacityConfig({ root = REPO_ROOT } = {}) {
     return copyCapacityConfig(DEFAULT_CAPACITY_CONFIG);
   }
   return copyCapacityConfig(candidate);
+}
+
+/**
+ * 把「两分钟」字段读成规则参数；不合法就是 null。
+ *
+ * 字段形状（中文，因为这份文件就是给会话里的 agent 写的）：
+ *
+ * ```jsonc
+ * { "两分钟": { "启用": true, "上限分钟": 2, "日回顾窗口": { "起": "14:45", "止": "15:00" } } }
+ * ```
+ *
+ * 口径与容量配置**同一套**：要么整体有效，要么整体退回通用默认值——
+ * 半坏的配置会算出一个看着准、其实错的阈值。
+ * 「启用: false」是**合法配置**（用户主动关掉这条规则），不是半坏。
+ * @param {unknown} value - 「两分钟」字段。
+ * @returns {{ enabled: boolean, maxMinutes: number, reviewWindow: { start: string, end: string } } | null} 读好的参数；不合法时为 null。
+ */
+function readTwoMinuteField(value) {
+  if (!isPlainObject(value)) return null;
+  if (typeof value.启用 !== 'boolean') return null;
+  if (!isNonNegativeNumber(value.上限分钟) || value.上限分钟 <= 0) return null;
+  const window = value.日回顾窗口;
+  if (!isPlainObject(window)) return null;
+  if (!isClockText(window.起) || !isClockText(window.止)) return null;
+  if (clockMinutesOf(window.止) <= clockMinutesOf(window.起)) return null;
+  return {
+    enabled: value.启用,
+    maxMinutes: value.上限分钟,
+    reviewWindow: { start: window.起.trim(), end: window.止.trim() },
+  };
+}
+
+/**
+ * 读本机的两分钟规则参数。
+ *
+ * 读的是仓库根的 `local-config.json` 里的「两分钟」字段。
+ * 任何一步不顺利（文件读不到、不是合法 JSON、没有这个字段、字段不是对象、
+ * 类型不对、时刻格式不对、窗口起止颠倒……）都**退回通用默认值**：不抛、不让工作台起不来。
+ *
+ * 每次调用都重新读盘（不缓存）：手改配置 → 刷新页面 → 立刻生效。
+ * @param {object} [options] - 选项。
+ * @param {string} [options.root] - 仓库根（默认本仓库根）。
+ * @returns {{ enabled: boolean, maxMinutes: number, reviewWindow: { start: string, end: string } }} 规则参数。
+ */
+export function readTwoMinutePolicy({ root = REPO_ROOT } = {}) {
+  const local = readLocalConfig({ root });
+  const parsed = readTwoMinuteField(local[TWO_MINUTE_FIELD]);
+  if (parsed !== null) return parsed;
+  return {
+    ...DEFAULT_TWO_MINUTE_POLICY,
+    reviewWindow: { ...DEFAULT_TWO_MINUTE_POLICY.reviewWindow },
+  };
 }
 
 /**

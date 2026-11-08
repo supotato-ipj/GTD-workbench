@@ -12,7 +12,7 @@
  * 渲染层只负责画：资格与顺序都随快照过界（与分段、违规、主攻同一层）。
  */
 
-import { estimateOf } from './capacity.js';
+import { estimateOf, minutesOfClock } from './capacity.js';
 import { isFocusNote } from './focus.js';
 import { requirementOf } from './requirement.js';
 
@@ -51,10 +51,168 @@ function estimateIn(note, context) {
 }
 
 /**
+ * 两分钟规则的**通用默认值**（虚构值；本机可在 `local-config.json` 的「两分钟」字段里改）。
+ *
+ * - `enabled`：规则开着没有。开着的意思是「收集箱里两分钟能做完的捕获可以顶主卡位」。
+ * - `maxMinutes`：阈值（分钟）。**不写死在判断逻辑里**——判断只读上下文里的这个数。
+ * - `reviewWindow`：**日回顾窗口**（每天固定的一段时刻，`HH:mm`），也就是「整理收集箱」的时段。
+ *
+ * **「整理收集箱」的口径 = 当前时刻落在日回顾窗口内。**
+ * GLOSSARY「日回顾」：每天一次、约 10 分钟，清空收集箱、把明天要动的动作排进时间档。
+ *
+ * 为什么不用「收集箱非空」当闸门：两分钟卡本身就在收集箱里，收集箱非空时它必然成立——
+ * 那等于没有闸门，规则会在一天的任何时刻生效，琐事就把上午唯一的连续块切碎了（ADR-0010）。
+ * 闸门必须落在**时刻**上。
+ *
+ * 默认窗口为什么落在下午尾段（14:45–15:00）：它必须**避开连续（深度）窗口**。
+ * 默认容量参数里的连续窗口是 09:00–12:00，日回顾窗口若压在它上面，
+ * 这条规则会被「深度块进行中」永久挡掉，等于没实现。
+ */
+export const DEFAULT_TWO_MINUTE_POLICY = {
+  enabled: true,
+  maxMinutes: 2,
+  reviewWindow: { start: '14:45', end: '15:00' },
+};
+
+/**
+ * 把一段时刻读成「起—止」；不合法就是 null。
+ * @param {unknown} value - 候选值。
+ * @returns {{ start: string, end: string } | null} 合法时给出，否则 null。
+ */
+function readReviewWindow(value) {
+  if (value === null || typeof value !== 'object') return null;
+  const start = typeof value.start === 'string' ? value.start.trim() : '';
+  const end = typeof value.end === 'string' ? value.end.trim() : '';
+  if (minutesOfClock(start) === null || minutesOfClock(end) === null) return null;
+  // 止不晚于起：当成没配（跨零点的窗口不做，交给通用默认值兜着）。
+  if (minutesOfClock(end) <= minutesOfClock(start)) return null;
+  return { start, end };
+}
+
+/**
+ * 把一份两分钟规则的参数读成可用形状（缺省用通用默认值）。
+ *
+ * 认得的字段：
+ * - `enabled`：规则开着没有。**缺省即关**——上下文里没给 `enabled: true` 就不启用。
+ * - `maxMinutes`：阈值（分钟）。缺省用通用默认值。
+ * - `reviewWindow`：日回顾窗口 `{ start, end }`（`HH:mm`）。写坏了退回通用默认值。
+ *
+ * `allowed` **不在这里算**：它要看今天还有没有深度动作（那是整份快照的事），
+ * 由 {@link twoMinuteStateOf} 算好后随上下文带下来。
+ * @param {unknown} policy - 候选参数。
+ * @returns {{ enabled: boolean, maxMinutes: number, reviewWindow: { start: string, end: string } }} 读好的参数。
+ */
+export function twoMinutePolicyOf(policy) {
+  const source = policy !== null && typeof policy === 'object' ? policy : {};
+  const maxMinutes =
+    typeof source.maxMinutes === 'number' && Number.isFinite(source.maxMinutes) && source.maxMinutes > 0
+      ? source.maxMinutes
+      : DEFAULT_TWO_MINUTE_POLICY.maxMinutes;
+  return {
+    enabled: source.enabled === true,
+    maxMinutes,
+    reviewWindow: readReviewWindow(source.reviewWindow) ?? DEFAULT_TWO_MINUTE_POLICY.reviewWindow,
+  };
+}
+
+/**
+ * 当前时刻是不是落在日回顾窗口里。
+ * @param {string} nowTime - 当前时刻（`HH:mm`）。
+ * @param {{ start: string, end: string }} window - 日回顾窗口。
+ * @returns {boolean} 在窗口里就是 true。
+ */
+function inReviewWindow(nowTime, window) {
+  const now = minutesOfClock(nowTime);
+  const start = minutesOfClock(window?.start);
+  const end = minutesOfClock(window?.end);
+  if (now === null || start === null || end === null) return false;
+  return now >= start && now < end;
+}
+
+/**
+ * 今天那个**深度名额**还挂着一条深度档动作没有。
+ *
+ * 「够格」= 执行清单里带唯一深度时间档的未完成动作——它会占掉今天那个深度名额。
+ * @param {object[]} containers - 快照的容器组。
+ * @returns {boolean} 还挂着就是 true。
+ */
+function deepPendingOf(containers) {
+  const groups = Array.isArray(containers) ? containers : [];
+  for (const group of groups) {
+    if (group === null || typeof group !== 'object') continue;
+    if (group.key !== 'execution') continue;
+    const notes = Array.isArray(group.notes) ? group.notes : [];
+    for (const note of notes) {
+      if (note === null || typeof note !== 'object') continue;
+      if (note.status !== undefined && note.status !== 0) continue;
+      if (note.timeBand === '深度') return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * **深度块进行中**没有。
+ *
+ * 口径（两个条件同时成立）：
+ * 1. 当前时刻落在**连续窗口**内——连续窗口是深度块的地盘（ADR-0010「时段驱动」）；
+ * 2. 今天的**深度名额还没被占用**：名额还挂着一条未完成的**深度档动作**
+ *    （它会占掉今天那个名额；`深度.单日配额` 为 0 时没有深度块这一说）。
+ *
+ * 名额没人挂（今天没有深度档动作）时，那段时间就没被深度占着，两分钟卡可以抢位。
+ * @param {object[]} containers - 快照的容器组。
+ * @param {object} context - 上下文（带 capacity）。
+ * @returns {boolean} 深度块进行中就是 true。
+ */
+function deepBlockInProgressOf(containers, context) {
+  const capacity = context?.capacity;
+  const window = capacity?.currentWindow ?? null;
+  if (window === null || window.kind !== '连续') return false;
+  const quota = typeof capacity.deepQuota === 'number' ? capacity.deepQuota : 1;
+  if (quota <= 0) return false;
+  return deepPendingOf(containers);
+}
+
+/**
+ * 两分钟规则此刻的状态：允许不允许、为什么。
+ *
+ * 「整理收集箱」= 当前时刻落在**日回顾窗口**内；
+ * 「深度块进行中」= 落在连续窗口内且今天的深度名额还挂着深度档动作。
+ * 三个条件同时成立才允许两分钟卡抢主卡位：
+ * **规则开着** ∧ **在日回顾窗口内** ∧ **深度块没有在跑**。
+ *
+ * 上下文里的 `allowed: false` 是**否决位**：上层可以按别的理由禁掉这条规则
+ * （显式给 `false` 才否决；不给就按这里算出来的）。
+ * @param {object[]} containers - 快照的容器组。
+ * @param {object} context - 上下文（今天、当前时刻、容量、两分钟规则参数）。
+ * @returns {{ enabled: boolean, maxMinutes: number, reviewWindow: object, inReviewWindow: boolean, deepBlockInProgress: boolean, allowed: boolean }} 状态。
+ */
+export function twoMinuteStateOf(containers, context) {
+  const policy = twoMinutePolicyOf(context?.twoMinute);
+  const inWindow = inReviewWindow(context?.nowTime, policy.reviewWindow);
+  const deepBlock = deepBlockInProgressOf(containers, context);
+  const vetoed = context?.twoMinute?.allowed === false;
+  return {
+    enabled: policy.enabled,
+    maxMinutes: policy.maxMinutes,
+    reviewWindow: policy.reviewWindow,
+    inReviewWindow: inWindow,
+    deepBlockInProgress: deepBlock,
+    allowed: policy.enabled && !vetoed && inWindow && !deepBlock,
+  };
+}
+
+/**
  * 收集箱里的捕获能不能走两分钟规则。
  *
- * 两分钟规则是**后续一票**的事（issue #11），本票只留接口、不启用：
- * `twoMinute.enabled` 不为 true 时，收集箱里的捕获一律按「未明晰」处理。
+ * 三个条件同时成立才走（规格 issue #1「焦点资格」第 7 条）：
+ * 1. 规则开着（`twoMinute.enabled`）；
+ * 2. **此刻允许**（`twoMinute.allowed`）——它由 {@link twoMinuteStateOf} 算好：
+ *    在日回顾窗口内（= 整理收集箱）且深度块没有在跑；
+ *    这一项**必须由调用方给**：深度块进行中与否要看今天还有没有深度动作，
+ *    那是整份快照的事，单看一条便贴判不出来。
+ * 3. **估时不超过阈值**——估时来自滴答已有的专注估算字段；
+ *    **未估算（null）不算**：没有估时就不能说它两分钟能做完。
  * @param {object} note - 便贴。
  * @param {object} context - 上下文。
  * @returns {boolean} 走两分钟规则就是 true。
@@ -63,11 +221,15 @@ function fitsTwoMinute(note, context) {
   const option = context?.twoMinute;
   if (option === null || typeof option !== 'object') return false;
   if (option.enabled !== true) return false;
-  // 深度块进行中不许两分钟卡抢位（ADR-0010）。
-  if (option.allowed === false) return false;
+  // 不在日回顾窗口内，或深度块正在跑 → 不抢主卡位（不报错、不空转）。
+  if (option.allowed !== true) return false;
   const minutes = estimateIn(note, context).minutes;
-  const max = typeof option.maxMinutes === 'number' ? option.maxMinutes : 2;
-  return minutes !== null && minutes <= max;
+  if (minutes === null) return false;
+  const max =
+    typeof option.maxMinutes === 'number' && Number.isFinite(option.maxMinutes) && option.maxMinutes > 0
+      ? option.maxMinutes
+      : DEFAULT_TWO_MINUTE_POLICY.maxMinutes;
+  return minutes <= max;
 }
 
 /**
@@ -126,7 +288,9 @@ function executionEligibility(note) {
  * 4. 项目清单不出卡；
  * 5. 可能清单到触碰日才进焦点；
  * 6. 日清不参与排序，顶部常驻；
- * 7. 收集箱里未判定的捕获不进焦点（两分钟规则是后续一票，本票留接口不启用）；
+ * 7. 收集箱里未判定的捕获不进焦点——**唯一例外是两分钟规则**：
+ *    估时不超过两分钟的捕获在**整理收集箱**（当前时刻落在日回顾窗口内）时直接顶到主卡位；
+ *    深度块进行中（在连续窗口内且今天的深度名额还挂着深度档动作）不许抢位；
  * 8. 缺时间档视为未判定。
  * @param {object} note - 便贴。
  * @param {string} containerKey - 它所在的容器。
@@ -332,9 +496,11 @@ function pickCard(ranked, context) {
  * @param {string} containerKey - 容器标识。
  * @param {string} containerName - 容器名。
  * @param {object} context - 上下文。
+ * @param {object} [options] - 选项。
+ * @param {boolean} [options.twoMinute] - 这张卡是不是两分钟卡（收集箱里直接做掉的那种）。
  * @returns {object} 行动卡。
  */
-function cardOf(note, containerKey, containerName, context) {
+function cardOf(note, containerKey, containerName, context, { twoMinute = false } = {}) {
   const estimate = estimateIn(note, context);
   const remaining = context.capacity?.remainingMinutes ?? 0;
   const deepCap = context.capacity?.deepDailyCapMinutes ?? 0;
@@ -345,6 +511,9 @@ function cardOf(note, containerKey, containerName, context) {
     title: note.title,
     container: containerKey,
     containerName,
+    // 两分钟卡的引导标记：true = 这条是收集箱里「两分钟就能做完」的捕获，
+    // 应当**直接做掉、别判定**。文案归 Client，Host 只给这个标记与事实。
+    twoMinute: twoMinute === true,
     timeBand: note.timeBand ?? null,
     dueLocal: note.dueLocal ?? null,
     dueDate: note.dueDate ?? null,
@@ -414,9 +583,13 @@ function dailyOf(note) {
 /**
  * 组装焦点：主卡 + 接下来 + 提醒位 + 日清。
  *
- * 全是纯函数：输入是快照的容器组与一份上下文（今天、当前时刻、容量），输出是一个焦点对象。
+ * 全是纯函数：输入是快照的容器组与一份上下文（今天、当前时刻、容量、两分钟规则参数），
+ * 输出是一个焦点对象。
+ *
+ * 主卡的归属有两条路：**正常候选**按 ADR-0010 挑（深度配额、时段偏好、逾期例外）；
+ * **两分钟卡**（收集箱里估时不超过两分钟的捕获）在规则允许时**直接顶到主卡位**。
  * @param {object[]} containers - 快照的容器组。
- * @param {object} context - 上下文（今天、当前时刻、容量）。
+ * @param {object} context - 上下文（今天、当前时刻、容量、两分钟规则参数）。
  * @returns {object} 焦点。
  */
 export function focusGuideOf(containers, context) {
@@ -435,13 +608,22 @@ export function focusGuideOf(containers, context) {
     }
   }
 
+  // 两分钟规则此刻的状态（口径见 twoMinuteStateOf）：
+  // 「整理收集箱」= 在日回顾窗口内；「深度块进行中」= 在连续窗口内且今天的深度名额还挂着深度档动作。
+  const twoMinute = twoMinuteStateOf(groups, ctx);
+  // 把状态带进上下文：资格判定（单条便贴）与下面的推导用的是**同一份**口径。
+  const ctx2 = { ...ctx, twoMinute: { ...(ctx.twoMinute ?? {}), ...twoMinute } };
+
   const eligible = [];
+  const twoMinuteEntries = [];
   const dailyEntries = [];
   const waitingEntries = [];
   for (const entry of entries) {
-    const { eligible: ok, reason } = eligibilityOf(entry.note, entry.containerKey, ctx);
+    const { eligible: ok, reason } = eligibilityOf(entry.note, entry.containerKey, ctx2);
     if (ok) {
-      eligible.push(entry);
+      // 收集箱里唯一能有资格的条目就是两分钟卡（其余捕获都「收集箱未明晰」）。
+      if (entry.containerKey === 'inbox') twoMinuteEntries.push(entry);
+      else eligible.push(entry);
       continue;
     }
     if (reason === '日清常驻顶部') dailyEntries.push(entry);
@@ -451,10 +633,12 @@ export function focusGuideOf(containers, context) {
   // 排序 → 深度配额 → 主卡。
   const ranked = rankOf(
     eligible.map((entry) => entry.note),
-    ctx,
+    ctx2,
   );
-  const byId = new Map(eligible.map((entry) => [entry.note.id, entry]));
-  const quota = typeof ctx.capacity?.deepQuota === 'number' ? ctx.capacity.deepQuota : 1;
+  const byId = new Map(
+    [...eligible, ...twoMinuteEntries].map((entry) => [entry.note.id, entry]),
+  );
+  const quota = typeof ctx2.capacity?.deepQuota === 'number' ? ctx2.capacity.deepQuota : 1;
   let quotaLeft = quota;
   const kept = [];
   const pushed = [];
@@ -472,11 +656,28 @@ export function focusGuideOf(containers, context) {
     kept.push(note);
   }
 
-  const cardNote = pickCard(kept, ctx);
+  // 两分钟卡：**直接顶到主卡位**——它是要做掉的，不是排队等的。
+  // 好几条都够两分钟时，按同一套排序取第一条（到期早的、id 小的先）。
+  const twoMinuteRanked = rankOf(
+    twoMinuteEntries.map((entry) => entry.note),
+    ctx2,
+  );
+  const twoMinuteNote = twoMinuteRanked.length > 0 ? twoMinuteRanked[0] : null;
+
+  // 正常候选的主卡（深度配额、时段偏好都在 pickCard 里）。
+  const normalCard = pickCard(kept, ctx2);
+  // 两分钟卡顶到主卡位：规则允许时，它就是现在该做的那一件。
+  //
+  // **不受「逾期优先」影响**：那一条例外说的是「不受**时段偏好**影响」，
+  // 而两分钟规则不是时段偏好，是一条**资格例外**（GTD 的两分钟规则：当场做掉、别判定）。
+  // 真的被它挤下去的逾期动作不会消失——它按排序进「接下来」的第一位。
+  const cardNote = twoMinuteNote === null ? normalCard : twoMinuteNote;
   const cardEntry = cardNote === null ? null : byId.get(cardNote.id) ?? null;
 
   // 「接下来」：到了时段的日清项在前（当天必须还清），其余按排序，最多四条。
-  const arrived = dailyEntries.filter((entry) => dailyArrived(entry.note, ctx));
+  // 两分钟卡**不进队列**：它要么占着主卡，要么还留在收集箱里等下一个日回顾窗口——
+  // 队列是**已判定的动作**的队列，而两分钟卡正是「别判定、直接做掉」的那一类。
+  const arrived = dailyEntries.filter((entry) => dailyArrived(entry.note, ctx2));
   const rest = kept.filter((note) => cardNote === null || note.id !== cardNote.id);
   const next = [
     ...arrived.map((entry) => nextOf(entry.note, entry.containerKey, entry.containerName, 'daily')),
@@ -487,10 +688,10 @@ export function focusGuideOf(containers, context) {
   ].slice(0, NEXT_QUEUE_LIMIT);
 
   // 提醒位：等待清单里「到期没回」的。它永不占主卡，只在这里冒出来。
-  const now = `${ctx.today} ${ctx.nowTime}`;
+  const now = `${ctx2.today} ${ctx2.nowTime}`;
   const reminders = [];
   for (const entry of waitingEntries) {
-    const replyDue = replyDueOf(entry.note, ctx);
+    const replyDue = replyDueOf(entry.note, ctx2);
     if (replyDue === null || replyDue > now) continue;
     reminders.push({
       id: entry.note.id,
@@ -503,12 +704,19 @@ export function focusGuideOf(containers, context) {
   }
 
   return {
-    card: cardEntry === null ? null : cardOf(cardEntry.note, cardEntry.containerKey, cardEntry.containerName, ctx),
+    card:
+      cardEntry === null
+        ? null
+        : cardOf(cardEntry.note, cardEntry.containerKey, cardEntry.containerName, ctx2, {
+            twoMinute: twoMinuteNote !== null && cardEntry.note.id === twoMinuteNote.id,
+          }),
     next,
     reminders,
     daily: dailyEntries.map((entry) => dailyOf(entry.note)),
     deepQuotaUsed: quota - quotaLeft > 0,
     // 被推到下一天的深度动作（快照里要把它们标成「深度配额已用」）。
     pushed,
+    // 两分钟规则此刻的状态（Host 侧算好随快照过界，Client 不重算）。
+    twoMinute,
   };
 }
