@@ -74,6 +74,7 @@
   "focusNextHint": "click one to make it the main card",
   "focusNextEmpty": "Nothing else queued",
   "focusCardEmpty": "Nothing to do right now",
+  "focusCardTwoMinute": "Two-minute card: do it now, skip deciding",
   "focusCompleteLabel": "Done",
   "focusCompletePending": "Completing…",
   "focusCompleteRefreshFailed": "Completed, but refreshing failed",

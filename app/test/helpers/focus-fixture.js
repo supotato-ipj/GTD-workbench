@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DEFAULT_CAPACITY_CONFIG } from '../../lib/capacity.js';
 import { TASKS_ROUTE_PATH, createTasksHandler } from '../../lib/route.js';
 import { withRoute } from './http-harness.js';
 
@@ -20,6 +21,19 @@ export const TIME_ZONE = 'Asia/Shanghai';
 
 /** 夹具用的生成时刻。 */
 export const GENERATED_AT = '2026-11-05T00:00:00.000Z';
+
+/** 收集箱里那条被估成两分钟的捕获（夹具里的 id，标题是虚构示例）。 */
+export const TWO_MINUTE_CAPTURE_ID = '7c4e00000000000000000018';
+
+/** 两分钟规则的参数（显式给，别让本机配置决定断言的结果）。 */
+export const TWO_MINUTE_POLICY = {
+  enabled: true,
+  maxMinutes: 2,
+  reviewWindow: { start: '14:45', end: '15:00' },
+};
+
+/** 落在日回顾窗口（14:45–15:00）内的时刻：本地 2026-11-05 14:50。 */
+export const IN_REVIEW_WINDOW = '2026-11-05T06:50:00.000Z';
 
 /**
  * 用固定夹具生成一份快照（走真的路由，字段与 Host 侧一致）。
@@ -64,4 +78,41 @@ export function patchNote(snapshot, id, patch) {
  */
 export function withFocus(snapshot, patch) {
   return { ...snapshot, focus: { ...snapshot.focus, ...patch } };
+}
+
+/**
+ * 造一份**收集箱里那条两分钟捕获**在主卡位上的快照（走真的路由）。
+ *
+ * 两分钟规则的参数显式给：本机有没有 `local-config.json` 不该决定渲染层断言的结果。
+ * @param {object} [options] - 选项。
+ * @param {number} [options.estimateMinutes] - 给那条捕获的估算分钟；不给就是 2 分钟。
+ * @param {number} [options.status] - 那条捕获的滴答状态（默认未完成；2 = 已勾完成）。
+ * @param {string} [options.now] - 生成时刻（ISO）；默认落在日回顾窗口内。
+ * @returns {Promise<object>} 快照。
+ */
+export async function twoMinuteSnapshotUnderTest({
+  estimateMinutes = 2,
+  status = 0,
+  now = IN_REVIEW_WINDOW,
+} = {}) {
+  const tasks = rawTasks.map((task) =>
+    task.id === TWO_MINUTE_CAPTURE_ID
+      ? { ...task, status, focusSummaries: { estimatedDuration: estimateMinutes } }
+      : task,
+  );
+  const handler = createTasksHandler({
+    connection: { requestRejection: () => undefined },
+    // 与生产同口径：只取**未完成**（滴答 `--status 0`），勾完成的那条自然不在快照里。
+    runDida: async ({ projectId, status: wanted }) =>
+      tasks.filter((task) => task.projectId === projectId && task.status === wanted),
+    timeZone: TIME_ZONE,
+    now: () => new Date(now),
+    capacityConfig: () => DEFAULT_CAPACITY_CONFIG,
+    twoMinutePolicy: () => TWO_MINUTE_POLICY,
+  });
+  return withRoute(handler, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}${TASKS_ROUTE_PATH}`);
+    if (response.status !== 200) throw new Error(`夹具快照取不到：HTTP ${response.status}`);
+    return response.json();
+  });
 }

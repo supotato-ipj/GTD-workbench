@@ -104,6 +104,8 @@ window.__ModuleLoader__.load({
       focusNextHint: '点一条即换主卡',
       focusNextEmpty: '接下来没有别的了',
       focusCardEmpty: '现在没有一件该做的事',
+      /* v2:two-minute 两分钟卡（issue #11）：Host 说是两分钟卡，这里只画一句引导。 */
+      focusCardTwoMinute: '两分钟卡：直接做掉、别判定',
       /* v2:write 完成写口（issue #9）：完成 = 滴答勾选，单口径。 */
       focusCompleteLabel: '完成',
       focusCompletePending: '完成中…',
@@ -218,6 +220,8 @@ window.__ModuleLoader__.load({
       focusNextHint: 'click one to make it the main card',
       focusNextEmpty: 'Nothing else queued',
       focusCardEmpty: 'Nothing to do right now',
+      /* v2:two-minute 两分钟卡（issue #11）：Host 说是两分钟卡，这里只画一句引导。 */
+      focusCardTwoMinute: 'Two-minute card: do it now, skip deciding',
       focusCompleteLabel: 'Done',
       focusCompletePending: 'Completing…',
       focusCompleteRefreshFailed: 'Completed, but refreshing failed',
@@ -2327,6 +2331,10 @@ window.__ModuleLoader__.load({
       const hint = card.capacityHint !== null && typeof card.capacityHint === 'object' ? card.capacityHint : null;
       const band = typeof card.timeBand === 'string' && card.timeBand.length > 0 ? card.timeBand : null;
       const dueText = typeof card.dueLocal === 'string' && card.dueLocal.length > 0 ? card.dueLocal : '—';
+      /* v2:two-minute 两分钟卡（issue #11）：Host 说了算这张卡是不是两分钟卡
+         （收集箱里「两分钟就能做完」的捕获）。Client 侧**不重算资格**，
+         只按这个标记画一句引导——短，且不与正常动作抢眼。 */
+      const twoMinute = card.twoMinute === true;
 
       /**
        * 卡上的一行（标签 + 值）。
@@ -2542,6 +2550,8 @@ window.__ModuleLoader__.load({
           'data-role': 'focus-card',
           'data-note-ref': card.id,
           'data-band': band === null ? '' : band,
+          /* 这张主卡是不是两分钟卡：一眼能看出来，测试也能断言。 */
+          'data-state': twoMinute ? 'two-minute' : 'normal',
           style: {
             position: 'relative',
             padding: '20px 18px 16px',
@@ -2577,6 +2587,31 @@ window.__ModuleLoader__.load({
               },
               band,
             ),
+        /* v2:two-minute 两分钟卡的引导：占时间档角标那一格，**不加一行**。
+           视觉上与正常动作有区别（描边的浅色片，不是实心色块），但不喧宾夺主。 */
+        twoMinute
+          ? h(
+              'span',
+              {
+                className: 'gtd-focus-card__two-minute',
+                'data-role': 'focus-card-two-minute',
+                'data-state': 'two-minute',
+                style: {
+                  display: 'inline-block',
+                  marginLeft: band === null ? '0' : '8px',
+                  padding: '2px 10px',
+                  border: '1px solid var(--dsw-alias-border-l2)',
+                  borderRadius: '999px',
+                  background: 'transparent',
+                  fontSize: '12px',
+                  lineHeight: '18px',
+                  fontWeight: 600,
+                  color: 'var(--dsw-alias-label-secondary)',
+                },
+              },
+              t('focusCardTwoMinute'),
+            )
+          : null,
         h(
           'h2',
           {
@@ -3234,6 +3269,8 @@ window.__ModuleLoader__.load({
         requirement: { text: null, source: null },
         estimateMinutes: null,
         estimateSource: null,
+        /* 「接下来」里的窄条都是已判定的动作，不是两分钟卡（两分钟卡不进队列）。 */
+        twoMinute: false,
         capacityHint: {
           fits: null,
           remainingMinutes: minutesOf(source.remainingMinutes),
@@ -3842,6 +3879,9 @@ window.__ModuleLoader__.load({
 .gtd-focus-next__item:hover { border-color: var(--dsw-alias-border-l3); }
 .gtd-focus-card__title button:hover { text-decoration: underline; }
 .gtd-focus-drill-entry:hover { border-color: var(--dsw-alias-label-tertiary); color: var(--dsw-alias-label-primary); }
+/* v2:two-minute 两分钟卡：卡面与正常动作有区别，但克制——描边略强一档，
+   不加实心色块、不抢主卡的视觉重心。 */
+.gtd-focus-card[data-state="two-minute"] { border-color: var(--dsw-alias-label-tertiary); }
 @media (prefers-reduced-motion: reduce) {
   .gtd-workbench *,
   .gtd-workbench *::before,
