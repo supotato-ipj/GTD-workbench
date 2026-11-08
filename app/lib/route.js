@@ -12,7 +12,7 @@
 
 import { ActionError } from './actions.js';
 import { CONTAINERS } from './containers.js';
-import { readCapacityConfig } from './config.js';
+import { readCapacityConfig, readTwoMinutePolicy } from './config.js';
 import { buildSnapshot, OPEN_STATUS } from './snapshot.js';
 import { DidaError } from './dida.js';
 import { shiftDate, windowOf } from './sunk.js';
@@ -136,6 +136,21 @@ export function resolveCapacityConfig(source) {
 }
 
 /**
+ * 解析**本次请求**用的两分钟规则参数。
+ *
+ * 口径与容量配置一样：可以是对象，也可以是**返回对象的函数**（每次调用现取）。
+ * 解析不出来（函数抛错、返回的不是对象）就当**没有配置**——
+ * 快照那边退回通用默认值（app/lib/focus-guide.js 的 DEFAULT_TWO_MINUTE_POLICY）。
+ * @param {object | (() => object)} source - 规则参数或读取器。
+ * @returns {object | undefined} 规则参数；没有时是 undefined。
+ */
+export function resolveTwoMinutePolicy(source) {
+  const value = typeof source === 'function' ? safeCall(source) : source;
+  if (value === null || value === undefined) return undefined;
+  return typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+}
+
+/**
  * 调一个读取器，抛错就当它没给出东西（不把异常往上抛）。
  * @param {() => unknown} reader - 读取器。
  * @returns {unknown} 读到的值；抛错时是 undefined。
@@ -162,6 +177,7 @@ function safeCall(reader) {
  * @param {(args: { projectIds: string[], startDate: string, endDate: string }) => Promise<object[]>} [options.runCompleted]
  *   按日期区间取已完成条目（已沉底区用）。
  * @param {object} [options.capacityConfig] - 容量配置（本次请求解析出来的那一份）。
+ * @param {object} [options.twoMinutePolicy] - 两分钟规则参数（本次请求解析出来的那一份）。
  * @returns {Promise<object>} 快照。
  */
 export async function collectSnapshot({
@@ -172,6 +188,7 @@ export async function collectSnapshot({
   loadRecords = () => [],
   runCompleted,
   capacityConfig,
+  twoMinutePolicy,
 }) {
   const tasksByProject = await readTasksByProject({ containers, runDida });
   // 已沉底区走另一条命令、按日期区间取已完成，**不与未完成混在一次调用里**。
@@ -185,6 +202,7 @@ export async function collectSnapshot({
     records: safeRecords(loadRecords),
     completedTasks,
     capacityConfig,
+    twoMinutePolicy,
   });
 }
 
@@ -203,6 +221,7 @@ export async function collectSnapshot({
  * @param {() => Date} [options.now] - 生成时刻。
  * @param {object[] | (() => object[])} [options.containers] - 本次取数的纸箱，默认六个容器（ADR-0007 的固定顺序）。
  * @param {object | (() => object)} [options.capacityConfig] - 容量配置，默认每次请求重读本机配置。
+ * @param {object | (() => object)} [options.twoMinutePolicy] - 两分钟规则参数，默认每次请求重读本机配置。
  * @param {() => object[]} [options.loadRecords] - 读 markdown 侧记录（Host 从仓库读）。
  * @param {(args: { projectIds: string[], startDate: string, endDate: string }) => Promise<object[]>} [options.runCompleted]
  *   按日期区间取已完成条目（已沉底区用）；不给就当没有已完成条目。
@@ -215,6 +234,7 @@ export function createTasksHandler({
   now = () => new Date(),
   containers = CONTAINERS,
   capacityConfig = () => readCapacityConfig(),
+  twoMinutePolicy = () => readTwoMinutePolicy(),
   loadRecords = () => [],
   runCompleted = async () => [],
 }) {
@@ -232,9 +252,10 @@ export function createTasksHandler({
       return;
     }
     try {
-      // 本次请求解析一次：纸箱与容量配置都用这一份，下面全程不再解析。
+      // 本次请求解析一次：纸箱、容量配置与两分钟规则都用这一份，下面全程不再解析。
       const resolvedContainers = resolveContainers(containers);
       const resolvedCapacity = resolveCapacityConfig(capacityConfig);
+      const resolvedTwoMinute = resolveTwoMinutePolicy(twoMinutePolicy);
       const snapshot = await collectSnapshot({
         containers: resolvedContainers,
         runDida,
@@ -243,6 +264,7 @@ export function createTasksHandler({
         timeZone,
         generatedAt: now(),
         capacityConfig: resolvedCapacity,
+        twoMinutePolicy: resolvedTwoMinute,
       });
       sendJson(res, 200, snapshot);
     } catch (error) {
