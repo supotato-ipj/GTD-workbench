@@ -70,9 +70,9 @@
   "focusCapacityNoteFits": "{minutes} min left, this takes {estimate} min",
   "focusCapacityNoteNoFits": "{minutes} min left, this needs {estimate} min",
   "focusCapacityNoteUnknown": "{minutes} min left",
-  "focusNextHeading": "Next up",
-  "focusNextHint": "click one to make it the main card",
-  "focusNextEmpty": "Nothing else queued",
+  "focusNextHeading": "Card holder",
+  "focusNextHint": "tap one to pull it to the desk",
+  "focusNextEmpty": "The card holder is empty",
   "focusCardEmpty": "Nothing to do right now",
   "focusCardTwoMinute": "Two-minute card: do it now, skip deciding",
   "focusCardFootProjectLabel": "Project",
@@ -110,5 +110,7 @@
   "sunkWindowUnit": "days",
   "sunkEmpty": "Nothing completed in the last seven days",
   "boxCompletions": "Done",
-  "boxCompletionsHint": "Completed in this box over the last seven days"
+  "boxCompletionsHint": "Completed in this box over the last seven days",
+  "focusNotesHint": "Tap to see the settings",
+  "focusReminderFlag": "Awaiting {count}"
 }

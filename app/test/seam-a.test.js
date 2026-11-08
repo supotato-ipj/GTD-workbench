@@ -258,6 +258,7 @@ test('接缝 A：工作台不写任何仓库文件', () => {
   const runtimeSources = [
     'index.js',
     'client.js',
+    'lib/assets.js',
     'lib/containers.js',
     'lib/snapshot.js',
     'lib/dida.js',

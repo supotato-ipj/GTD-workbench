@@ -100,10 +100,12 @@ window.__ModuleLoader__.load({
       focusCapacityNoteFits: '还剩 {minutes} 分钟，这件 {estimate} 分钟',
       focusCapacityNoteNoFits: '还剩 {minutes} 分钟，这件要 {estimate} 分钟',
       focusCapacityNoteUnknown: '还剩 {minutes} 分钟',
-      focusNextHeading: '接下来',
-      focusNextHint: '点一条即换主卡',
-      focusNextEmpty: '接下来没有别的了',
-      focusCardEmpty: '现在没有一件该做的事',
+      focusNextHeading: '卡夹',
+      focusNextHint: '点一张抽到主位',
+      focusNextEmpty: '卡夹空着',
+      focusCardEmpty: '现在没有该做的事',
+      focusNotesHint: '点开看参数',
+      focusReminderFlag: '等回 {count}',
       /* v2:two-minute 两分钟卡（issue #11）：Host 说是两分钟卡，这里只画一句引导。 */
       focusCardTwoMinute: '两分钟卡：直接做掉、别判定',
       /* v2:project 卡脚（规格故事 22–24）：这一件在哪条项目线上。 */
@@ -219,10 +221,12 @@ window.__ModuleLoader__.load({
       focusCapacityNoteFits: '{minutes} min left, this takes {estimate} min',
       focusCapacityNoteNoFits: '{minutes} min left, this needs {estimate} min',
       focusCapacityNoteUnknown: '{minutes} min left',
-      focusNextHeading: 'Next up',
-      focusNextHint: 'click one to make it the main card',
-      focusNextEmpty: 'Nothing else queued',
+      focusNextHeading: 'Card holder',
+      focusNextHint: 'tap one to pull it to the desk',
+      focusNextEmpty: 'The card holder is empty',
       focusCardEmpty: 'Nothing to do right now',
+      focusNotesHint: 'Tap to see the settings',
+      focusReminderFlag: 'Awaiting {count}',
       /* v2:two-minute 两分钟卡（issue #11）：Host 说是两分钟卡，这里只画一句引导。 */
       focusCardTwoMinute: 'Two-minute card: do it now, skip deciding',
       /* v2:project card foot (spec stories 22-24): which project line this belongs to. */
@@ -2065,17 +2069,17 @@ window.__ModuleLoader__.load({
     }
     /* v2:shell end */
 
-    /* v2:focus 焦点引导器（GitHub issue #6「05 · 焦点只读上线」的 Client 侧）
+    /* v3:desk 焦点视图是像素工位（issue #13，ADR-0012）
      *
-     * 四层结构照 `prototype/index.html`（工单 04 的一次性原型，用户已过观感门禁）：
-     *   ① 顶部常驻：今日日清 + 今日剩余可排时间 + 深度名额；
-     *   ② 行动卡（主位）：工作内容、完成时限、完成要求、预计耗时，外加一句容量提示；
-     *   ③「接下来」窄条队列：只写标题与时限，点一条即换主卡；
-     *   ④ 下钻层：点开就是 v1 的六箱画布原样，带一个「回到焦点」。
+     * 一层桌面、一盏台灯、一张立在桌上的竖版行动卡。卡是画面里唯一被照亮的主体；
+     * 卡夹（「接下来」）、便签叠（今日日清）、桌左小屏（预计耗时／装不装得下／剩余可排）、
+     * 灯座上的深度指示块、小旗（到期没回）、桌下抽屉（六箱）、桌沿标牌与桌角开关，
+     * 都是桌面上的物件。
      *
-     * **Client 只画不算**（ADR-0010）：资格、排序、容量、可排时间、主卡与队列的内容
-     * 全部由 Host 算好随快照过界（`focus.card` / `focus.next` / `today.*` / `capacity.*`），
-     * 这一层只负责把它们摆成原型那个样子。换主卡与下钻都是**纯视图状态**，不写任何数据。
+     * 仍然是**只读、只画不算**：资格、排序、容量、主卡与队列的内容全部来自快照；
+     * 换卡（点卡夹、左右划）是视图内状态，零写入；完成与改期仍是仅有的两个写口。
+     * 工位自带一套夜色色板与点阵字体，**不用**宿主 `--dsw-alias-*` 令牌；
+     * 六箱画布与下钻层照旧走宿主令牌（ADR-0007 的「质感」在焦点视图范围内被 ADR-0012 取代）。
      */
 
     /**
@@ -2083,15 +2087,191 @@ window.__ModuleLoader__.load({
      */
     const EMPTY_SNAPSHOT = {};
 
+    /** 美术网格：600×420 的像素工位（与 `prototype/pixel-desk` 同一张网格）。 */
+    const DESK_ART = {
+      width: 600,
+      height: 420,
+      card: { x: 210, y: 90, width: 200, height: 280, centerX: 310, maxWidth: 280 },
+      screen: { x: 24, y: 250, width: 150, height: 84 },
+      holder: { x: 415, y: 152, width: 175, height: 120 },
+      notes: { x: 415, y: 282, width: 170, height: 70 },
+      flag: { x: 484, y: 354, width: 76, height: 36 },
+      plaques: { x: 18, y: 394, width: 180, height: 20 },
+      drawer: { x: 250, y: 394, width: 100, height: 20 },
+      power: { x: 532, y: 392, width: 50, height: 22 },
+      quota: { x: 84, y: 142, width: 16, height: 10 },
+      lamp: { x: 26, y: 56, width: 160, height: 100 },
+    };
+
+    /** 工位素材的路径（Host 的 prefix 路由；不是模块，客户端仍单文件）。 */
+    const DESK_SCENE_URL = '/gtd-workbench/assets/pixel/desk-scene.png';
+    const DESK_PAPER_URL = '/gtd-workbench/assets/pixel/paper-grain.png';
+
+    /** 工位字体族：自带前缀，不在 `body`／`:root` 上覆盖宿主令牌。 */
+    const DESK_FONT_FAMILY = "'GtdPixelFusion', 'Ark Pixel 12px', ui-monospace, monospace";
+
     /**
-     * 取一个分钟数：只认数字，负数按 0 算（界面上不显示负的剩余时间）。
-     * @param {unknown} value - 候选值。
-     * @returns {number} 分钟数；不是数字时为 0。
+     * 工位色板：夜色 + 暖光 + 纸色。
+     *
+     * 全部定义在工位根上，**工位子树里不出现宿主 `--dsw-alias-*`**——要照出光斑，
+     * 就必须自己掌握明暗（ADR-0012 决定 3）。
      */
-    function minutesOf(value) {
-      if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
-      return Math.max(0, Math.floor(value));
+    const DESK_PALETTE = {
+      '--gtd-room': '#0d0e12',
+      '--gtd-wall-upper': '#0f1118',
+      '--gtd-wall': '#12151d',
+      '--gtd-desk': '#2a2318',
+      '--gtd-desk-edge': '#332a1c',
+      '--gtd-front': '#1b1710',
+      '--gtd-front-edge': '#3b3024',
+      '--gtd-paper': '#e9e1cd',
+      '--gtd-paper-2': '#f3ecd8',
+      '--gtd-ink': '#221d16',
+      '--gtd-ink-dim': '#6b6150',
+      '--gtd-warm': '#ffd9a0',
+      '--gtd-warm-dim': '#e8b46a',
+      '--gtd-stamp': '#a63f2e',
+      '--gtd-screen': '#101319',
+      '--gtd-screen-edge': '#3b4250',
+      '--gtd-screen-ink': '#e6c98c',
+      '--gtd-screen-dim': '#9aa2b2',
+      '--gtd-screen-bad': '#e08c74',
+      '--gtd-holder': '#17130e',
+      '--gtd-holder-edge': '#3a3226',
+      '--gtd-notes': '#e4dbc4',
+      '--gtd-notes-edge': '#14110c',
+      '--gtd-flag': '#b4462f',
+      '--gtd-flag-edge': '#6d2a20',
+      '--gtd-plaque': '#1f232c',
+      '--gtd-plaque-edge': '#3a3f4c',
+      '--gtd-power': '#1b1f27',
+    };
+
+    /**
+     * 取一个正数，否则用兜底值。
+     * @param {unknown} value - 候选值。
+     * @param {number} fallback - 兜底值。
+     * @returns {number} 正数。
+     */
+    function positiveNumber(value, fallback) {
+      return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
     }
+
+    /**
+     * 工位的缩放与版面：一个美术像素 = `scale` 个设备像素（`scale` 只取整数）。
+     *
+     * 先试 3、再 2、最后 1：字号只有 12 与 24 两个美术像素台阶，缩放取整之后
+     * `字号 × devicePixelRatio` 一定落在 12 的整数倍上（点阵字不落半像素）。
+     * 窗口比美术网格宽时，多出来的空间由暗房间延伸填满（不出黑边）；
+     * 比网格还窄时，先把卡加宽——**不把字号压到 12 以下**。
+     * @param {{ width?: number, height?: number, dpr?: number } | null | undefined} input - 视口。
+     * @returns {object} 版面：`scale`、`unit`（CSS px / 美术 px）、画布与工位尺寸、卡宽。
+     */
+    function deskGeometryOf(input) {
+      const width = positiveNumber(input === null || input === undefined ? undefined : input.width, 1024);
+      const height = positiveNumber(input === null || input === undefined ? undefined : input.height, 768);
+      const dpr = positiveNumber(input === null || input === undefined ? undefined : input.dpr, 1);
+      let scale = 1;
+      for (const candidate of [3, 2, 1]) {
+        if (DESK_ART.width * candidate <= width * dpr && DESK_ART.height * candidate <= height * dpr) {
+          scale = candidate;
+          break;
+        }
+      }
+      const unit = scale / dpr;
+      const viewWidth = Math.max(1, Math.floor(width / unit));
+      const viewHeight = Math.max(1, Math.floor(height / unit));
+      const boardWidth = Math.max(DESK_ART.width, viewWidth);
+      const boardHeight = Math.max(DESK_ART.height, viewHeight);
+      const narrow = viewWidth < DESK_ART.width;
+      /* 整组物件以卡为中心：宽窗多出来的暗房间往两边铺，窄窗把看不见的两侧裁掉。 */
+      const originX = Math.floor((narrow ? viewWidth : boardWidth) / 2 - DESK_ART.width / 2);
+      const cardWidth = narrow
+        ? Math.min(DESK_ART.card.maxWidth, Math.max(DESK_ART.card.width, Math.floor((viewWidth - 40) / 2) * 2))
+        : DESK_ART.card.width;
+      return {
+        scale,
+        unit,
+        dpr,
+        boardWidth,
+        boardHeight,
+        originX,
+        narrow,
+        cardWidth,
+        cardLeft: DESK_ART.card.centerX + originX - Math.floor(cardWidth / 2),
+      };
+    }
+
+    /**
+     * 量一下视口：优先量工位容器，量不到就用窗口（静态渲染时给一个保守的默认值）。
+     * @param {object | null} element - 工位容器。
+     * @returns {{ width: number, height: number, dpr: number }} 视口。
+     */
+    function deskViewportOf(element) {
+      const win = typeof window === 'undefined' ? null : window;
+      const fallbackWidth = win !== null && positiveNumber(win.innerWidth, 0) > 0 ? win.innerWidth : 1024;
+      const fallbackHeight = win !== null && positiveNumber(win.innerHeight, 0) > 0 ? win.innerHeight : 768;
+      const dpr = win !== null ? positiveNumber(win.devicePixelRatio, 1) : 1;
+      const width =
+        element !== null &&
+        typeof element === 'object' &&
+        typeof element.clientWidth === 'number' &&
+        element.clientWidth > 0
+          ? element.clientWidth
+          : fallbackWidth;
+      const height =
+        element !== null &&
+        typeof element === 'object' &&
+        typeof element.clientHeight === 'number' &&
+        element.clientHeight > 0
+          ? element.clientHeight
+          : fallbackHeight;
+      return { width, height, dpr };
+    }
+
+    /**
+     * 一个美术网格上的盒子：左／上／宽／高都乘同一个 `--gtd-u`。
+     * @param {number} x - 左（美术 px）。
+     * @param {number} y - 上（美术 px）。
+     * @param {number} width - 宽（美术 px）。
+     * @param {number} height - 高（美术 px）。
+     * @returns {object} 内联样式。
+     */
+    function deskBox(x, y, width, height) {
+      return {
+        position: 'absolute',
+        left: `calc(var(--gtd-u) * ${x})`,
+        top: `calc(var(--gtd-u) * ${y})`,
+        width: `calc(var(--gtd-u) * ${width})`,
+        height: `calc(var(--gtd-u) * ${height})`,
+      };
+    }
+
+    /**
+     * 点阵字的一档：字号与行高都是美术像素，乘同一个 `--gtd-u`。
+     * @param {number} size - 字号（美术 px）。
+     * @param {number} line - 行高（美术 px）。
+     * @returns {object} 内联样式。
+     */
+    function deskText(size, line) {
+      return {
+        fontSize: `calc(var(--gtd-u) * ${size})`,
+        lineHeight: `calc(var(--gtd-u) * ${line})`,
+      };
+    }
+
+    /** 只给读屏与测试看的文字（视觉上不占位）。 */
+    const VISUALLY_HIDDEN = {
+      position: 'absolute',
+      width: '1px',
+      height: '1px',
+      padding: 0,
+      margin: '-1px',
+      overflow: 'hidden',
+      clip: 'rect(0 0 0 0)',
+      whiteSpace: 'nowrap',
+      border: 0,
+    };
 
     /**
      * 把模板里的占位符换成取值（词表里的句子带 `{minutes}` 这样的占位）。
@@ -2108,422 +2288,420 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 顶部常驻：今日日清状态、今日剩余可排时间、深度名额。
-     *
-     * 三个数一直亮在背景上，但不抢主位（issue #1 第一层）。用户已拍板「保持原型里的分量」，
-     * 所以字号与对比都照原型：标签 11px、值 19px 粗体、等宽数字。
-     * @param {object} props - props：`today`、`capacity`、`t`。
-     * @returns {object} React 元素。
+     * 取一个分钟数：只认数字，负数按 0 算（界面上不显示负的剩余时间）。
+     * @param {unknown} value - 候选值。
+     * @returns {number} 分钟数；不是数字时为 0。
      */
-    function FocusTopBar(props) {
-      const t = props.t;
-      const today = props.today !== null && typeof props.today === 'object' ? props.today : {};
-      const capacity = props.capacity !== null && typeof props.capacity === 'object' ? props.capacity : {};
-      const daily = Array.isArray(today.daily) ? today.daily : [];
-      // 「几笔未还」按 Host 给的 state 数（`未还清` 的那些）——Client 不自己推。
-      const open = daily.filter(
-        (row) => row !== null && typeof row === 'object' && row.state === '未还清',
-      ).length;
-      const remaining = minutesOf(today.remainingMinutes);
-      const quotaTotal =
-        typeof capacity.deepQuota === 'number' && Number.isFinite(capacity.deepQuota)
-          ? capacity.deepQuota
-          : 1;
-      const quotaUsed = today.deepQuotaUsed === true ? 1 : 0;
-
-      /**
-       * 一个数位。
-       * @param {string} key - 数位键。
-       * @param {string} label - 标签文案。
-       * @param {string | number} value - 主数值。
-       * @param {string | null} unit - 单位（没有单位就是 null）。
-       * @param {object} extra - 数值上的额外标记（给测试与眼睛看真值）。
-       * @param {boolean} first - 是不是第一个（第一个不画左分隔线）。
-       * @returns {object} React 元素。
-       */
-      const stat = (key, label, value, unit, extra, first) =>
-        h(
-          'div',
-          {
-            className: 'gtd-focus-top__stat',
-            'data-role': 'focus-stat',
-            'data-stat': key,
-            style: {
-              flex: '1 1 0',
-              minWidth: 0,
-              padding: first ? '0 10px 0 0' : '0 10px',
-              borderLeft: first ? 'none' : '1px solid var(--dsw-alias-border-l2)',
-            },
-          },
-          h(
-            'span',
-            {
-              'data-role': 'focus-stat-label',
-              style: {
-                display: 'block',
-                fontSize: '11px',
-                lineHeight: '15px',
-                color: 'var(--dsw-alias-label-caption)',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              },
-            },
-            label,
-          ),
-          h(
-            'span',
-            {
-              className: 'gtd-focus-top__value',
-              'data-role': 'focus-stat-value',
-              'data-stat': key,
-              ...extra,
-              style: {
-                display: 'block',
-                marginTop: '1px',
-                fontSize: '19px',
-                lineHeight: '24px',
-                fontWeight: 650,
-                color: 'var(--dsw-alias-label-primary)',
-                fontVariantNumeric: 'tabular-nums',
-              },
-            },
-            value,
-            unit === null
-              ? null
-              : h(
-                  'small',
-                  {
-                    style: {
-                      fontSize: '11px',
-                      fontWeight: 500,
-                      color: 'var(--dsw-alias-label-caption)',
-                      marginLeft: '2px',
-                    },
-                  },
-                  unit,
-                ),
-          ),
-        );
-
-      return h(
-        'header',
-        {
-          className: 'gtd-focus-top',
-          'data-role': 'focus-top',
-          style: {
-            display: 'flex',
-            alignItems: 'stretch',
-            gap: 0,
-            padding: '12px 16px 10px',
-            borderBottom: '1px solid var(--dsw-alias-border-l2)',
-            background: 'var(--dsw-alias-bg-module-platform)',
-          },
-        },
-        stat(
-          'daily',
-          t('focusDailyLabel'),
-          open,
-          `/${daily.length} ${t('focusDailyUndone')}`,
-          { 'data-open': String(open), 'data-total': String(daily.length) },
-          true,
-        ),
-        stat(
-          'remaining',
-          t('focusRemainingLabel'),
-          remaining,
-          t('focusMinutesUnit'),
-          { 'data-minutes': String(remaining) },
-          false,
-        ),
-        stat(
-          'deep-quota',
-          t('focusQuotaLabel'),
-          `${quotaUsed}/${quotaTotal}`,
-          null,
-          { 'data-used': String(quotaUsed), 'data-total': String(quotaTotal) },
-          false,
-        ),
-      );
+    function minutesOf(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+      return Math.max(0, Math.floor(value));
     }
 
     /**
-     * 提醒位：等待清单里「到期没回」的那些。
+     * 桌左小屏：这张卡装不装得下、还剩多少可排时间。
      *
-     * 它**不占主卡**（ADR-0010 第三条）：等待清单永远不占主位，只在这里冒一声。
-     * @param {object} props - props：`reminders`、`t`。
-     * @returns {object} React 元素或 null。
+     * 卡上不再写耗时与容量（ADR-0012 修订 2）——它们在这里，和「今天还剩多少」并排。
+     * 「一个数只出现一次」仍然成立：卡上只有时限标签。
+     * @param {object} props - props：`card`、`today`、`t`。
+     * @returns {object} React 元素。
      */
-    function FocusReminders(props) {
+    function DeskScreen(props) {
       const t = props.t;
-      const reminders = Array.isArray(props.reminders) ? props.reminders : [];
-      if (reminders.length === 0) return null;
-      return h(
-        'section',
-        {
-          className: 'gtd-focus-reminders',
-          'data-role': 'focus-reminders',
-          'data-count': String(reminders.length),
-          style: {
-            padding: '10px 16px',
-            borderBottom: '1px solid var(--dsw-alias-border-l2)',
-            background: 'var(--dsw-alias-bg-module-platform)',
-          },
-        },
-        h(
-          'h3',
-          {
-            'data-role': 'focus-reminders-heading',
-            style: {
-              margin: '0 0 6px',
-              fontSize: '11px',
-              lineHeight: '16px',
-              fontWeight: 600,
-              letterSpacing: '0.04em',
-              color: 'var(--dsw-alias-label-caption)',
+      const card = props.card !== null && typeof props.card === 'object' ? props.card : null;
+      const today = props.today !== null && typeof props.today === 'object' ? props.today : {};
+      const remaining = minutesOf(today.remainingMinutes);
+      const estimate =
+        card !== null && typeof card.estimateMinutes === 'number' && Number.isFinite(card.estimateMinutes)
+          ? card.estimateMinutes
+          : null;
+      const hint = card !== null && card.capacityHint !== null && typeof card.capacityHint === 'object' ? card.capacityHint : null;
+
+      const lines = [];
+      if (card === null) {
+        lines.push(
+          h('div', {
+            key: 'empty',
+            className: 'gtd-desk__screen-line gtd-desk__screen-dim',
+            style: deskText(12, 16),
+          }, t('focusCardEmpty')),
+        );
+      } else {
+        /* 预计耗时：未估算是 null，不是 0 分钟（README「预计耗时」）。 */
+        lines.push(
+          h(
+            'div',
+            {
+              key: 'estimate',
+              className: 'gtd-desk__screen-line',
+              'data-role': 'focus-card-estimate',
+              'data-source': typeof card.estimateSource === 'string' ? card.estimateSource : '',
+              style: deskText(12, 16),
             },
-          },
-          t('focusRemindersHeading'),
-        ),
-        h(
-          'ul',
-          {
-            style: {
-              margin: 0,
-              padding: 0,
-              listStyle: 'none',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '4px',
-            },
-          },
-          reminders.map((item) =>
+            h('span', { className: 'gtd-desk__screen-dim' }, `${t('focusCardEstimateLabel')} `),
+            estimate === null
+              ? h('span', { 'data-role': 'focus-card-estimate-unset' }, t('focusEstimateUnset'))
+              : `${estimate} ${t('focusMinutesUnit')}`,
+          ),
+        );
+        if (hint !== null) {
+          const fits = hint.fits === true ? true : hint.fits === false ? false : null;
+          const state =
+            fits === true
+              ? t('focusCapacityFits')
+              : fits === false
+                ? t('focusCapacityNoFit')
+                : t('focusCapacityUnknown');
+          const remainingHint = minutesOf(hint.remainingMinutes);
+          const note =
+            estimate === null
+              ? fillTemplate(t('focusCapacityNoteUnknown'), { minutes: remainingHint })
+              : fillTemplate(
+                  fits === false ? t('focusCapacityNoteNoFits') : t('focusCapacityNoteFits'),
+                  { minutes: remainingHint, estimate },
+                );
+          lines.push(
             h(
-              'li',
+              'div',
               {
-                key: item.id,
-                'data-role': 'focus-reminder',
-                'data-note-ref': item.id,
-                style: { display: 'flex', alignItems: 'baseline', gap: '8px' },
+                key: 'capacity',
+                className: 'gtd-desk__screen-line',
+                'data-role': 'focus-card-capacity',
+                'data-state': fits === true ? 'fits' : fits === false ? 'no' : 'unknown',
+                style: deskText(12, 16),
               },
               h(
                 'span',
                 {
-                  'data-role': 'focus-reminder-title',
-                  style: { fontSize: '12px', lineHeight: '18px', color: 'var(--dsw-alias-label-primary)' },
+                  className: fits === false ? 'gtd-desk__screen-bad' : 'gtd-desk__screen-strong',
+                  'data-role': 'focus-card-capacity-state',
                 },
-                item.title,
+                state,
               ),
-              typeof item.replyDue === 'string' && item.replyDue.length > 0
-                ? h(
-                    'span',
-                    {
-                      'data-role': 'focus-reminder-due',
-                      style: {
-                        fontSize: '11px',
-                        lineHeight: '16px',
-                        color: 'var(--dsw-alias-label-caption)',
-                        fontVariantNumeric: 'tabular-nums',
-                      },
-                    },
-                    item.replyDue,
-                  )
-                : null,
+              h(
+                'span',
+                { className: 'gtd-desk__screen-dim', 'data-role': 'focus-card-capacity-note' },
+                ` · ${note}`,
+              ),
             ),
+          );
+        }
+      }
+      lines.push(
+        h(
+          'div',
+          {
+            key: 'remaining',
+            className: 'gtd-desk__screen-line',
+            'data-role': 'focus-stat',
+            'data-stat': 'remaining',
+            style: deskText(12, 16),
+          },
+          h('span', { className: 'gtd-desk__screen-dim', 'data-role': 'focus-stat-label' }, `${t('focusRemainingLabel')} `),
+          h(
+            'span',
+            {
+              'data-role': 'focus-stat-value',
+              'data-stat': 'remaining',
+              'data-minutes': String(remaining),
+            },
+            `${remaining} ${t('focusMinutesUnit')}`,
+          ),
+        ),
+      );
+
+      return h(
+        'section',
+        {
+          className: 'gtd-desk__screen',
+          'data-role': 'gtd-desk-screen',
+          'aria-label': t('focusRemainingLabel'),
+          style: deskBox(DESK_ART.screen.x, DESK_ART.screen.y, DESK_ART.screen.width, DESK_ART.screen.height),
+        },
+        lines,
+      );
+    }
+
+    /**
+     * 便签叠：今日日清，几笔未还。
+     *
+     * 「容量参数定于某日」「窗口外那笔日清不占可排时间」两句收在里面，点开才看见
+     * （ADR-0012 决定 6）。点开只是视图内状态，不写任何东西。
+     * @param {object} props - props：`today`、`capacity`、`t`、`open`、`onToggle`、`originX`。
+     * @returns {object} React 元素。
+     */
+    function DeskNotes(props) {
+      const t = props.t;
+      const today = props.today !== null && typeof props.today === 'object' ? props.today : {};
+      const capacity = props.capacity !== null && typeof props.capacity === 'object' ? props.capacity : {};
+      const daily = Array.isArray(today.daily) ? today.daily : [];
+      const openCount = daily.filter((row) => row !== null && typeof row === 'object' && row.state === '未还清').length;
+      const asOfSet = typeof capacity.asOf === 'string' && capacity.asOf.length > 0;
+      const asOfText = asOfSet ? `${t('focusCapacityAsOf')} ${capacity.asOf}` : t('focusCapacityAsOfUnset');
+      const outsideMinutes = minutesOf(capacity.dailyMinutesOutsideWindow);
+      const outsideText =
+        outsideMinutes > 0 ? fillTemplate(t('focusCapacityOutsideWindow'), { minutes: outsideMinutes }) : null;
+      return h(
+        'section',
+        {
+          className: 'gtd-desk__notes',
+          'data-role': 'gtd-desk-notes',
+          'data-state': props.open === true ? 'open' : 'closed',
+          role: 'button',
+          tabIndex: 0,
+          'aria-expanded': props.open === true ? 'true' : 'false',
+          onClick: props.onToggle,
+          onKeyDown: (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              props.onToggle();
+            }
+          },
+          style: deskBox(
+            DESK_ART.notes.x + props.originX,
+            DESK_ART.notes.y,
+            DESK_ART.notes.width,
+            DESK_ART.notes.height,
+          ),
+        },
+        h(
+          'div',
+          {
+            className: 'gtd-desk__notes-head',
+            'data-role': 'focus-stat',
+            'data-stat': 'daily',
+            style: deskText(12, 16),
+          },
+          h('span', { 'data-role': 'focus-stat-label' }, t('focusDailyLabel')),
+          ' ',
+          h(
+            'span',
+            {
+              'data-role': 'focus-stat-value',
+              'data-stat': 'daily',
+              'data-open': String(openCount),
+              'data-total': String(daily.length),
+            },
+            `${openCount}/${daily.length} ${t('focusDailyUndone')}`,
+          ),
+        ),
+        h('div', { className: 'gtd-desk__notes-hint', style: deskText(12, 14) }, t('focusNotesHint')),
+        h(
+          'div',
+          {
+            className: 'gtd-desk__notes-fine',
+            'data-role': 'focus-capacity-bar',
+          },
+          h(
+            'div',
+            {
+              className: 'gtd-desk__notes-slip',
+              'data-role': 'focus-capacity-asof',
+              'data-state': asOfSet ? 'set' : 'unset',
+              style: deskText(12, 16),
+            },
+            asOfText,
+          ),
+          outsideText === null
+            ? null
+            : h(
+                'div',
+                {
+                  className: 'gtd-desk__notes-slip',
+                  'data-role': 'focus-capacity-outside',
+                  'data-minutes': String(outsideMinutes),
+                  style: deskText(12, 16),
+                },
+                outsideText,
+              ),
+        ),
+      );
+    }
+
+    /**
+     * 深度名额：灯座上一枚方形指示块（用掉就熄灭）。
+     *
+     * 数值仍然带可断言的 `data-used` / `data-total`，视觉上只是一块亮/暗。
+     * @param {object} props - props：`today`、`capacity`、`t`、`originX`。
+     * @returns {object} React 元素。
+     */
+    function DeskQuota(props) {
+      const t = props.t;
+      const today = props.today !== null && typeof props.today === 'object' ? props.today : {};
+      const capacity = props.capacity !== null && typeof props.capacity === 'object' ? props.capacity : {};
+      const quotaTotal =
+        typeof capacity.deepQuota === 'number' && Number.isFinite(capacity.deepQuota) ? capacity.deepQuota : 1;
+      const quotaUsed = today.deepQuotaUsed === true ? 1 : 0;
+      return h(
+        'div',
+        {
+          className: 'gtd-desk__quota',
+          'data-role': 'gtd-desk-quota',
+          'data-on': quotaUsed > 0 ? '1' : '0',
+          'aria-label': `${t('focusQuotaLabel')} ${quotaUsed}/${quotaTotal}`,
+          style: deskBox(
+            DESK_ART.quota.x + props.originX,
+            DESK_ART.quota.y,
+            DESK_ART.quota.width,
+            DESK_ART.quota.height,
+          ),
+        },
+        h(
+          'span',
+          {
+            className: 'gtd-desk__quota-stat',
+            'data-role': 'focus-stat',
+            'data-stat': 'deep-quota',
+            style: VISUALLY_HIDDEN,
+          },
+          h('span', { 'data-role': 'focus-stat-label' }, t('focusQuotaLabel')),
+          h(
+            'span',
+            {
+              'data-role': 'focus-stat-value',
+              'data-stat': 'deep-quota',
+              'data-used': String(quotaUsed),
+              'data-total': String(quotaTotal),
+            },
+            `${quotaUsed}/${quotaTotal}`,
           ),
         ),
       );
     }
 
     /**
-     * 行动卡（主位）：一条动作在工作台上的呈现。
+     * 小旗：等待清单里「到期没回」的那几条。
      *
-     * 卡上写的是那条动作自己的内容（GLOSSARY「行动卡」），**不新造一个卡对象**。
-     * 四样必备里缺哪一样，就**少一行**——整卡永远在，不能因为字段缺了就什么都不显示。
-     * @param {object} props - props：`card`、`t`、`onOpenNote`。
+     * 桌上只插一面旗，旗面写「等回 N」；点开才列是哪几条（用户 2026-11-08 裁定）。
+     * 它不占主位，也不写入任何东西。
+     * @param {object} props - props：`reminders`、`t`、`open`、`onToggle`、`originX`。
+     * @returns {object} React 元素或 null。
+     */
+    function DeskFlag(props) {
+      const t = props.t;
+      const reminders = Array.isArray(props.reminders) ? props.reminders : [];
+      if (reminders.length === 0) return null;
+      const open = props.open === true;
+      return h(
+        'div',
+        {
+          className: 'gtd-desk__flag',
+          'data-role': 'gtd-desk-flag',
+          'data-state': open ? 'open' : 'closed',
+          style: deskBox(DESK_ART.flag.x + props.originX, DESK_ART.flag.y, DESK_ART.flag.width, DESK_ART.flag.height),
+        },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'gtd-desk__flag-button',
+            onClick: props.onToggle,
+            'aria-expanded': open ? 'true' : 'false',
+            style: deskText(12, 18),
+          },
+          h('span', { className: 'gtd-desk__flag-pole', 'aria-hidden': 'true' }),
+          h(
+            'span',
+            {
+              className: 'gtd-desk__flag-banner',
+              'data-role': 'focus-reminders',
+              'data-count': String(reminders.length),
+            },
+            fillTemplate(t('focusReminderFlag'), { count: reminders.length }),
+          ),
+        ),
+        open
+          ? h(
+              'div',
+              { className: 'gtd-desk__flag-list' },
+              h('p', { className: 'gtd-desk__flag-heading', 'data-role': 'focus-reminders-heading' }, t('focusRemindersHeading')),
+              h(
+                'ul',
+                { className: 'gtd-desk__flag-items' },
+                reminders.map((item) =>
+                  h(
+                    'li',
+                    {
+                      key: item.id,
+                      className: 'gtd-desk__flag-item',
+                      'data-role': 'focus-reminder',
+                      'data-note-ref': item.id,
+                      style: deskText(12, 16),
+                    },
+                    h('span', { 'data-role': 'focus-reminder-title' }, item.title),
+                    typeof item.replyDue === 'string' && item.replyDue.length > 0
+                      ? h('span', { className: 'gtd-desk__flag-due', 'data-role': 'focus-reminder-due' }, item.replyDue)
+                      : null,
+                  ),
+                ),
+              ),
+            )
+          : null,
+      );
+    }
+
+    /**
+     * 桌沿两块标牌：六箱画布／焦点视图。
+     *
+     * 与外壳里的 `ViewSwitcher` 同一套角色（`view-switch-*`），只是换成了桌面上的牌子——
+     * 切视图不会一半是像素工位、一半是网页标签（规格故事 22）。
+     * @param {object} props - props：`t`、`mode`、`onChange`。
      * @returns {object} React 元素。
      */
-    function FocusActionCard(props) {
+    function DeskViewSwitch(props) {
+      const t = props.t;
+      const mode = props.mode === VIEW_MODE.CANVAS ? VIEW_MODE.CANVAS : VIEW_MODE.FOCUS;
+      const plaque = (key, label) =>
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'gtd-desk__plaque',
+            'data-role': `view-switch-${key}`,
+            'data-active': mode === key ? 'true' : 'false',
+            onClick: () => props.onChange(key),
+            style: deskText(12, 18),
+          },
+          label,
+        );
+      return h(
+        'div',
+        { className: 'gtd-desk__plaques', 'data-role': 'view-switch', 'data-view': mode },
+        plaque(VIEW_MODE.CANVAS, t('viewCanvasLabel')),
+        plaque(VIEW_MODE.FOCUS, t('viewFocusLabel')),
+      );
+    }
+
+    /**
+     * 行动卡（主位）：一条动作立在桌面上。
+     *
+     * 卡上写的是那条动作自己的内容（GLOSSARY「行动卡」），**不新造一个卡对象**。
+     * 标题最大、完成时限是卡上一枚标签、完成要求是正文；预计耗时与容量判定在桌左小屏上
+     * （ADR-0012 修订 2）。缺哪一样就少一块，整卡永远在。
+     * @param {object} props - props：`card`、`t`、`onOpenNote`、写口回调、`stamp`、`onStamp`、版面。
+     * @returns {object} React 元素。
+     */
+    function DeskActionCard(props) {
       const t = props.t;
       const card = props.card;
-      if (card === null || typeof card !== 'object') {
-        return h(
-          'p',
-          {
-            'data-role': 'focus-card-empty',
-            style: { margin: 0, fontSize: '13px', lineHeight: '20px', color: 'var(--dsw-alias-label-caption)' },
-          },
-          t('focusCardEmpty'),
-        );
-      }
       const requirement = card.requirement !== null && typeof card.requirement === 'object' ? card.requirement : {};
       const requirementText =
         typeof requirement.text === 'string' && requirement.text.length > 0 ? requirement.text : null;
       const requirementSource =
         typeof requirement.source === 'string' && requirement.source.length > 0 ? requirement.source : null;
-      // 未估算是 `null`，不是 0 分钟（README「预计耗时」）。
-      const estimate =
-        typeof card.estimateMinutes === 'number' && Number.isFinite(card.estimateMinutes)
-          ? card.estimateMinutes
-          : null;
-      const hint = card.capacityHint !== null && typeof card.capacityHint === 'object' ? card.capacityHint : null;
-      /* v2:project 卡脚的项目指针：Host 侧算好（靠 markdown 记录编号与项目箱箱签对上）。
-         没有就是 null——**推不出就不画卡脚**，Client 不自己猜。 */
       const project =
         card.project !== null && typeof card.project === 'object' && typeof card.project.name === 'string'
           ? card.project
           : null;
       const band = typeof card.timeBand === 'string' && card.timeBand.length > 0 ? card.timeBand : null;
       const dueText = typeof card.dueLocal === 'string' && card.dueLocal.length > 0 ? card.dueLocal : '—';
-      /* v2:two-minute 两分钟卡（issue #11）：Host 说了算这张卡是不是两分钟卡
-         （收集箱里「两分钟就能做完」的捕获）。Client 侧**不重算资格**，
-         只按这个标记画一句引导——短，且不与正常动作抢眼。 */
+      /* v2:two-minute 两分钟卡（issue #11）：Host 说了算这张卡是不是两分钟卡。
+         用户 2026-11-08 裁定：引导做成卡上一角的小纸条，不另造桌面道具。 */
       const twoMinute = card.twoMinute === true;
 
-      /**
-       * 卡上的一行（标签 + 值）。
-       * @param {string} key - 行键（也当 data-role 用）。
-       * @param {string} label - 标签文案。
-       * @param {object} value - 值（React 节点）。
-       * @param {object} [extra] - 值上的额外标记（给测试与眼睛看真值）。
-       * @returns {object} React 元素。
-       */
-      const fact = (key, label, value, extra) =>
-        h(
-          'div',
-          {
-            'data-role': 'focus-card-fact',
-            'data-fact': key,
-            style: {
-              display: 'grid',
-              gridTemplateColumns: '64px 1fr',
-              gap: '10px',
-              alignItems: 'baseline',
-            },
-          },
-          h(
-            'span',
-            {
-              'data-role': 'focus-card-fact-label',
-              style: { fontSize: '11px', lineHeight: '17px', color: 'var(--dsw-alias-label-caption)' },
-            },
-            label,
-          ),
-          h(
-            'span',
-            {
-              'data-role': `focus-card-${key}`,
-              ...extra,
-              style: { fontSize: '13.5px', lineHeight: '20px', color: 'var(--dsw-alias-label-primary)' },
-            },
-            value,
-          ),
-        );
-
-      /** 容量提示：装不装得下由 Host 说了算（`capacityHint.fits`），这里只把它画出来。 */
-      const capacityBlock =
-        hint === null
-          ? null
-          : (() => {
-              const fits = hint.fits === true ? true : hint.fits === false ? false : null;
-              const remaining = minutesOf(hint.remainingMinutes);
-              const state =
-                fits === true
-                  ? t('focusCapacityFits')
-                  : fits === false
-                    ? t('focusCapacityNoFit')
-                    : t('focusCapacityUnknown');
-              const note =
-                estimate === null
-                  ? fillTemplate(t('focusCapacityNoteUnknown'), { minutes: remaining })
-                  : fillTemplate(
-                      fits === false ? t('focusCapacityNoteNoFits') : t('focusCapacityNoteFits'),
-                      { minutes: remaining, estimate },
-                    );
-              const ratio =
-                estimate === null || remaining <= 0
-                  ? null
-                  : Math.max(4, Math.min(100, Math.round((estimate / remaining) * 100)));
-              return h(
-                'div',
-                {
-                  className: 'gtd-focus-card__capacity',
-                  'data-role': 'focus-card-capacity',
-                  'data-state': fits === true ? 'fits' : fits === false ? 'no' : 'unknown',
-                  style: {
-                    marginTop: '14px',
-                    padding: '10px 12px',
-                    border: '1px solid var(--dsw-alias-border-l2)',
-                    borderRadius: 'var(--dsw-radius-md)',
-                    background: 'var(--dsw-alias-bg-module-platform)',
-                  },
-                },
-                h(
-                  'div',
-                  {
-                    style: {
-                      display: 'flex',
-                      alignItems: 'baseline',
-                      gap: '8px',
-                      fontSize: '13px',
-                      lineHeight: '19px',
-                      color: 'var(--dsw-alias-label-primary)',
-                    },
-                  },
-                  h(
-                    'span',
-                    {
-                      'data-role': 'focus-card-capacity-state',
-                      style: { fontWeight: 650 },
-                    },
-                    state,
-                  ),
-                  h(
-                    'span',
-                    {
-                      'data-role': 'focus-card-capacity-note',
-                      style: { fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
-                    },
-                    note,
-                  ),
-                ),
-                ratio === null
-                  ? null
-                  : h(
-                      'div',
-                      {
-                        'data-role': 'focus-card-capacity-meter',
-                        style: {
-                          position: 'relative',
-                          height: '6px',
-                          marginTop: '8px',
-                          borderRadius: '999px',
-                          background: 'var(--dsw-alias-border-l2)',
-                          overflow: 'hidden',
-                        },
-                      },
-                      h('span', {
-                        'data-role': 'focus-card-capacity-fill',
-                        style: {
-                          position: 'absolute',
-                          top: 0,
-                          bottom: 0,
-                          left: 0,
-                          width: `${ratio}%`,
-                          borderRadius: '999px',
-                          background: 'var(--dsw-alias-label-tertiary)',
-                        },
-                      }),
-                    ),
-              );
-            })();
-
-      /* v2:write 写口（issue #9/#10）：完成 = 滴答勾选，改期 = 写新的完成时限。
-         写口的状态（等待／失败／写成了但刷新失败）住在外壳里，这里只把它画出来。 */
+      /* v2:write 写口：状态住在外壳里，这里只把它画出来。 */
       const write = props.write !== null && typeof props.write === 'object' ? props.write : null;
       const mine = write !== null && write.taskId === card.id ? write : null;
       const pending = mine !== null && mine.status === 'pending';
-      /* 两个写口各自显示自己的等待态；但同一次写只允许一个在飞——连点不许写两次。 */
       const isRescheduleWrite = mine !== null && mine.action === 'reschedule';
       const pendingComplete = pending && !isRescheduleWrite;
       const pendingReschedule = pending && isRescheduleWrite;
@@ -2532,14 +2710,8 @@ window.__ModuleLoader__.load({
       const [rescheduleOpen, setRescheduleOpen] = React.useState(false);
       const [needDate, setNeedDate] = React.useState(false);
       const dateInputRef = React.useRef(null);
-      /* 初值：这条动作当前的完成时限（粒度到天）。没有期限就是空的——不替用户猜一个日子。 */
       const initialDueDate =
         typeof card.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(card.dueDate) ? card.dueDate : '';
-      /* 日期输入是**不受 React 管**的：值在提交那一刻从 DOM 上读，
-         所以它永远是 `YYYY-MM-DD`（`<input type="date">` 的值形状），不会带上时刻。 */
-      /* 写有结果了就收摊：改期写成了（哪怕刷新没成）就把编辑器收起来，
-         别让用户以为还没改；写失败则留着编辑器与那个日子，好让他改一改再试。
-         只认「改期」那一次写：完成写口的结果不该动改期编辑器。 */
       const lastWriteRef = React.useRef(null);
       React.useEffect(() => {
         const previous = lastWriteRef.current;
@@ -2566,10 +2738,7 @@ window.__ModuleLoader__.load({
       };
 
       /**
-       * 提交改期：读日期输入上的值，写成「新的完成时限」。
-       *
-       * 值在**提交那一刻**从 DOM 上读：`<input type="date">` 的值形状就是 `YYYY-MM-DD`，
-       * 带时刻的字符串它根本收不下——所以这一条路上发不出 Host 会当场拒掉的参数。
+       * 提交改期：值在**提交那一刻**从 DOM 上读（`<input type="date">` 的形状就是 `YYYY-MM-DD`）。
        * @param {object} event - 事件。
        * @returns {void} 无。
        */
@@ -2577,236 +2746,154 @@ window.__ModuleLoader__.load({
         const input = dateInputRef.current;
         const dueDate = input === null ? '' : String(input.value ?? '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
-          /* 没有日子（或日子不成立）就不写：先让人挑一个完成时限。 */
           setNeedDate(true);
           return;
         }
         setNeedDate(false);
         const taskId = taskIdOf(event);
         if (taskId === null) return;
+        if (typeof props.onStamp === 'function') props.onStamp(taskId, 'reschedule');
         if (typeof props.onReschedule === 'function') props.onReschedule(taskId, dueDate);
       };
+
+      const stamp =
+        props.stamp !== null &&
+        typeof props.stamp === 'object' &&
+        props.stamp.id === card.id &&
+        (props.stamp.kind === 'complete' || props.stamp.kind === 'reschedule')
+          ? props.stamp.kind
+          : null;
+
+      /* 竖版卡：200×280 美术像素，立在桌面上；按下去盖印章，写成功、新快照回来时整张卡被抽走。 */
+      const cardStyle = Object.assign(
+        deskBox(props.cardLeft, DESK_ART.card.y, props.cardWidth, DESK_ART.card.height),
+        { backgroundImage: `url(${DESK_PAPER_URL})` },
+      );
 
       return h(
         'article',
         {
-          className: 'gtd-focus-card',
+          className: 'gtd-desk__card',
           'data-role': 'focus-card',
           'data-note-ref': card.id,
           'data-band': band === null ? '' : band,
-          /* 这张主卡是不是两分钟卡：一眼能看出来，测试也能断言。 */
           'data-state': twoMinute ? 'two-minute' : 'normal',
-          style: {
-            position: 'relative',
-            padding: '20px 18px 16px',
-            border: '1px solid var(--dsw-alias-border-l3)',
-            borderRadius: 'var(--dsw-radius-xl)',
-            background: 'var(--dsw-alias-bg-base)',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.10)',
-            overflow: 'hidden',
+          style: cardStyle,
+          onPointerDown: (event) => {
+            if (typeof props.onSwipeStart === 'function') props.onSwipeStart(event);
+          },
+          onPointerUp: (event) => {
+            if (typeof props.onSwipeEnd === 'function') props.onSwipeEnd(event);
           },
         },
-        /* v2:focus 主卡「弱化纸感」：没有折角、也没有纸纹，只留纸色调与一层浅影。
-           下钻层里的 v1 纸箱与便贴照旧保留原来的纸感（`gtd-box__fold` 与 `.gtd-box::after`）。 */
-        band === null
-          ? null
-          : h(
-              'span',
-              {
-                className: 'gtd-focus-card__band',
-                'data-role': 'focus-card-band',
-                'data-band': band,
-                /* 时间档色是 artwork：底是固定色相，字就得是固定的浅色——
-                   跟着主题翻色反而在深蓝／深绿底上读不清（与便贴上的时间档标签同一套做法）。 */
-                style: {
-                  display: 'inline-block',
-                  padding: '1px 7px',
-                  borderRadius: '999px',
-                  fontSize: '11px',
-                  lineHeight: '17px',
-                  fontWeight: 600,
-                  color: '#ffffff',
-                  background: BAND_COLORS[band] ?? 'var(--dsw-alias-label-tertiary)',
-                },
-              },
-              band,
-            ),
-        /* v2:two-minute 两分钟卡的引导：占时间档角标那一格，**不加一行**。
-           视觉上与正常动作有区别（描边的浅色片，不是实心色块），但不喧宾夺主。 */
+        /* 两分钟卡：卡上一角的小纸条（描边纸片，不是又一排按钮）。 */
         twoMinute
           ? h(
               'span',
               {
-                className: 'gtd-focus-card__two-minute',
+                className: 'gtd-desk__two-minute',
                 'data-role': 'focus-card-two-minute',
                 'data-state': 'two-minute',
-                style: {
-                  display: 'inline-block',
-                  marginLeft: band === null ? '0' : '8px',
-                  padding: '2px 10px',
-                  border: '1px solid var(--dsw-alias-border-l2)',
-                  borderRadius: '999px',
-                  background: 'transparent',
-                  fontSize: '12px',
-                  lineHeight: '18px',
-                  fontWeight: 600,
-                  color: 'var(--dsw-alias-label-secondary)',
-                },
+                style: deskText(12, 16),
               },
               t('focusCardTwoMinute'),
             )
           : null,
         h(
           'h2',
-          {
-            className: 'gtd-focus-card__title',
-            'data-role': 'focus-card-title',
-            'data-fact': 'work',
-            style: {
-              margin: '10px 0 0',
-              fontSize: '23px',
-              lineHeight: '1.35',
-              fontWeight: 700,
-              letterSpacing: '0.01em',
-            },
-          },
+          { className: 'gtd-desk__card-title', 'data-role': 'focus-card-title' },
           h(
             'button',
             {
               type: 'button',
+              className: 'gtd-desk__card-open',
               'data-role': 'focus-card-open',
-              /* 这一段大字就是「工作内容」（四要素之一）：说给读屏的人听。 */
               'aria-label': `${t('focusCardWorkLabel')} ${card.title}`,
+              title: card.title,
               onClick: () => {
                 if (typeof props.onOpenNote === 'function') props.onOpenNote(card);
               },
-              style: {
-                display: 'block',
-                width: '100%',
-                margin: 0,
-                padding: 0,
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--dsw-alias-label-primary)',
-                font: 'inherit',
-                textAlign: 'left',
-                cursor: 'pointer',
-              },
+              style: deskText(24, 26),
             },
             card.title,
           ),
         ),
         h(
-          'dl',
-          {
-            'data-role': 'focus-card-facts',
-            style: { margin: '14px 0 0', display: 'grid', gap: '10px' },
-          },
-          fact(
-            'due',
-            t('focusCardDueLabel'),
-            h(
-              React.Fragment,
-              null,
-              dueText,
-              card.overdue === true
-                ? h(
-                    'span',
-                    {
-                      'data-role': 'focus-card-overdue',
-                      style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-tertiary)' },
-                    },
-                    t('focusCardOverdue'),
-                  )
-                : null,
-            ),
-          ),
-          /* 完成要求缺失 → 这一行不画；整卡不受影响。 */
-          requirementText === null
-            ? null
-            : fact(
-                'requirement',
-                t('focusCardRequirementLabel'),
-                h(
-                  React.Fragment,
-                  null,
-                  requirementText,
-                  requirementSource === null
-                    ? null
-                    : h(
-                        'span',
-                        {
-                          'data-role': 'focus-card-requirement-source',
-                          style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
-                        },
-                        /* 来源标记说成「来自记录页」——光秃秃一个「记录页」看不出是从哪来的。 */
-                        fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
-                      ),
-                ),
-              ),
-          fact(
-            'estimate',
-            t('focusCardEstimateLabel'),
-            estimate === null
-              ? h('span', { 'data-role': 'focus-card-estimate-unset' }, t('focusEstimateUnset'))
-              : `${estimate} ${t('focusMinutesUnit')}`,
-            /* 估时取自滴答的哪一个字段：机器可读，不往界面上摆术语。 */
-            { 'data-source': typeof card.estimateSource === 'string' ? card.estimateSource : '' },
+          'div',
+          { className: 'gtd-desk__card-due-row' },
+          h(
+            'span',
+            {
+              className: 'gtd-desk__card-tag',
+              'data-role': 'focus-card-due',
+              'data-overdue': card.overdue === true ? 'true' : 'false',
+              style: deskText(12, 16),
+            },
+            dueText,
+            card.overdue === true
+              ? h(
+                  'span',
+                  { className: 'gtd-desk__card-overdue', 'data-role': 'focus-card-overdue' },
+                  ` · ${t('focusCardOverdue')}`,
+                )
+              : null,
           ),
         ),
-        capacityBlock,
-        /* v2:write 写口那一行：事实行之下、卡脚之上。按钮克制——不加新的说明文字块。
-           三个控件**位置分开**：完成（实心）与改期（描边）是两个写口，
-           跳过是零写入的弱化项，排在分隔线之后——不与写口合并成一个「推迟」。 */
+        requirementText === null
+          ? null
+          : h(
+              'div',
+              { className: 'gtd-desk__card-req' },
+              h('span', { className: 'gtd-desk__card-req-key', style: deskText(12, 18) }, t('focusCardRequirementLabel')),
+              h(
+                'p',
+                {
+                  className: 'gtd-desk__card-req-text',
+                  'data-role': 'focus-card-requirement',
+                  style: deskText(12, 18),
+                },
+                requirementText,
+                requirementSource === null
+                  ? null
+                  : h(
+                      'span',
+                      {
+                        className: 'gtd-desk__card-req-source',
+                        'data-role': 'focus-card-requirement-source',
+                        style: deskText(12, 18),
+                      },
+                      fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
+                    ),
+              ),
+            ),
+        /* 写口那一行：完成（实心）与改期（描边）是两个写口，跳过是零写入的弱化项。 */
         h(
           'div',
-          {
-            className: 'gtd-focus-card__writes',
-            'data-role': 'focus-card-actions',
-            style: {
-              marginTop: '14px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              flexWrap: 'wrap',
-            },
-          },
-          /* 完成：实心主按钮。等待期间按钮不许再点：Host 一次完成要跑十几次 CLI 调用。 */
+          { className: 'gtd-desk__card-actions', 'data-role': 'focus-card-actions' },
           h(
             'button',
             {
               type: 'button',
+              className: 'gtd-desk__btn gtd-desk__btn--solid',
               'data-role': 'focus-card-complete',
               'data-state': pendingComplete ? 'pending' : 'idle',
               disabled: pending,
               'aria-busy': pendingComplete ? 'true' : 'false',
               onClick: (event) => {
-                /* 目标 id 从卡上的 `data-note-ref` 取（焦点视图不占用 `data-note-id`）。 */
                 const taskId = taskIdOf(event);
                 if (taskId === null) return;
+                if (typeof props.onStamp === 'function') props.onStamp(taskId, 'complete');
                 if (typeof props.onComplete === 'function') props.onComplete(taskId);
               },
-              style: {
-                padding: '5px 14px',
-                border: '1px solid transparent',
-                borderRadius: 'var(--dsw-radius-md)',
-                background: 'var(--dsw-alias-button-primary-fill, var(--dsw-alias-label-primary))',
-                color: 'var(--dsw-alias-label-primary-foreground, var(--dsw-alias-bg-base))',
-                font: 'inherit',
-                fontSize: '13px',
-                lineHeight: '20px',
-                fontWeight: 600,
-                cursor: pending ? 'progress' : 'pointer',
-                opacity: pending ? 0.7 : 1,
-              },
+              style: deskText(12, 18),
             },
             pendingComplete ? t('focusCompletePending') : t('focusCompleteLabel'),
           ),
-          /* 改期：描边次按钮，与完成分开摆——改期写的是新的完成时限，不是完成。 */
           h(
             'button',
             {
               type: 'button',
+              className: 'gtd-desk__btn',
               'data-role': 'focus-card-reschedule',
               'data-state': pendingReschedule ? 'pending' : 'idle',
               'aria-expanded': rescheduleOpen ? 'true' : 'false',
@@ -2818,36 +2905,16 @@ window.__ModuleLoader__.load({
                 setNeedDate(false);
                 setRescheduleOpen((open) => !open);
               },
-              style: {
-                padding: '5px 14px',
-                border: '1px solid var(--dsw-alias-border-l3)',
-                borderRadius: 'var(--dsw-radius-md)',
-                background: 'var(--dsw-alias-bg-module-platform)',
-                color: 'var(--dsw-alias-label-secondary)',
-                font: 'inherit',
-                fontSize: '13px',
-                lineHeight: '20px',
-                cursor: pending ? 'progress' : 'pointer',
-                opacity: pending ? 0.7 : 1,
-              },
+              style: deskText(12, 18),
             },
             pendingReschedule ? t('focusReschedulePending') : t('focusRescheduleLabel'),
           ),
-          /* 分隔线：把零写入的那一项隔到写口的另一边去。 */
-          h('span', {
-            'data-role': 'focus-card-actions-sep',
-            'aria-hidden': 'true',
-            style: {
-              flex: '1 1 auto',
-              minWidth: '16px',
-              borderTop: '1px dashed var(--dsw-alias-border-l2)',
-            },
-          }),
-          /* 跳过：零写入。点了不发请求、不写任何东西——只是本次会话里不再看见它。 */
+          h('span', { className: 'gtd-desk__card-sep', 'data-role': 'focus-card-actions-sep', 'aria-hidden': 'true' }),
           h(
             'button',
             {
               type: 'button',
+              className: 'gtd-desk__skip',
               'data-role': 'focus-card-skip',
               'data-state': 'idle',
               onClick: (event) => {
@@ -2855,62 +2922,40 @@ window.__ModuleLoader__.load({
                 if (taskId === null) return;
                 if (typeof props.onSkip === 'function') props.onSkip(taskId);
               },
-              style: {
-                padding: '5px 2px',
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--dsw-alias-label-tertiary)',
-                font: 'inherit',
-                fontSize: '12.5px',
-                lineHeight: '19px',
-                cursor: 'pointer',
-              },
+              style: deskText(12, 16),
             },
             t('focusSkipLabel'),
           ),
           h(
             'span',
-            {
-              'data-role': 'focus-card-skip-note',
-              style: { fontSize: '10.5px', lineHeight: '16px', color: 'var(--dsw-alias-label-caption)' },
-            },
+            { className: 'gtd-desk__skip-note', 'data-role': 'focus-card-skip-note', style: deskText(12, 16) },
             t('focusSkipNote'),
           ),
         ),
-        /* v2:write 写口的话：失败原因／写成了但刷新失败——说清楚，不让人猜。 */
+        /* 写口的话：失败原因／写成了但刷新失败——说清楚，不让人猜。 */
         mine !== null && mine.status !== 'pending'
           ? h(
               'div',
               {
+                className: 'gtd-desk__card-status',
                 'data-role': 'focus-card-write-status',
-                style: {
-                  marginTop: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  flexWrap: 'wrap',
-                },
+                style: deskText(12, 18),
               },
               mine.status === 'failed'
                 ? h(
                     'p',
                     {
+                      className: 'gtd-desk__card-status-text',
                       'data-role': isRescheduleWrite ? 'focus-reschedule-error' : 'focus-complete-error',
                       'data-code': typeof mine.code === 'string' ? mine.code : '',
-                      style: {
-                        margin: 0,
-                        fontSize: '12px',
-                        lineHeight: '18px',
-                        color: 'var(--dsw-alias-label-primary)',
-                      },
                     },
                     typeof mine.message === 'string' ? mine.message : '',
                     typeof mine.code === 'string' && mine.code.length > 0
                       ? h(
                           'span',
                           {
+                            className: 'gtd-desk__card-status-code',
                             'data-role': isRescheduleWrite ? 'focus-reschedule-error-code' : 'focus-complete-error-code',
-                            style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
                           },
                           `（${mine.code}）`,
                         )
@@ -2921,22 +2966,16 @@ window.__ModuleLoader__.load({
                 ? h(
                     'p',
                     {
+                      className: 'gtd-desk__card-status-text',
                       'data-role': isRescheduleWrite ? 'focus-reschedule-refresh-failed' : 'focus-complete-refresh-failed',
-                      style: {
-                        margin: 0,
-                        fontSize: '12px',
-                        lineHeight: '18px',
-                        color: 'var(--dsw-alias-label-primary)',
-                      },
                     },
-                    /* 写成功了，只是刷新没成——不能说成写失败（用户会以为没改上而重复点）。 */
                     isRescheduleWrite ? t('focusRescheduleRefreshFailed') : t('focusCompleteRefreshFailed'),
                     typeof mine.message === 'string' && mine.message.length > 0
                       ? h(
                           'span',
                           {
+                            className: 'gtd-desk__card-status-code',
                             'data-role': isRescheduleWrite ? 'focus-reschedule-refresh-detail' : 'focus-complete-refresh-detail',
-                            style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
                           },
                           `：${mine.message}`,
                         )
@@ -2948,20 +2987,10 @@ window.__ModuleLoader__.load({
                     'button',
                     {
                       type: 'button',
+                      className: 'gtd-desk__card-status-retry',
                       'data-role': isRescheduleWrite ? 'focus-reschedule-refresh' : 'focus-complete-refresh',
                       onClick: () => {
                         if (typeof props.onRefresh === 'function') props.onRefresh();
-                      },
-                      style: {
-                        padding: '2px 10px',
-                        border: '1px solid var(--dsw-alias-border-l3)',
-                        borderRadius: 'var(--dsw-radius-md)',
-                        background: 'var(--dsw-alias-bg-module-platform)',
-                        color: 'var(--dsw-alias-label-secondary)',
-                        font: 'inherit',
-                        fontSize: '12px',
-                        lineHeight: '19px',
-                        cursor: 'pointer',
                       },
                     },
                     t('refresh'),
@@ -2969,67 +2998,29 @@ window.__ModuleLoader__.load({
                 : null,
             )
           : null,
-        /* v2:write 改期编辑器：点开才在。开合是**视图内状态**——取消不写任何东西。 */
+        /* 改期编辑器：点开才在；取消不写任何东西。 */
         rescheduleOpen
           ? h(
               'div',
-              {
-                'data-role': 'focus-card-reschedule-editor',
-                style: {
-                  marginTop: '10px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  flexWrap: 'wrap',
-                },
-              },
-              h(
-                'span',
-                {
-                  'data-role': 'focus-card-reschedule-date-label',
-                  style: { fontSize: '12px', lineHeight: '19px', color: 'var(--dsw-alias-label-secondary)' },
-                },
-                t('focusRescheduleDateLabel'),
-              ),
+              { className: 'gtd-desk__card-editor', 'data-role': 'focus-card-reschedule-editor', style: deskText(12, 16) },
+              h('span', { 'data-role': 'focus-card-reschedule-date-label' }, t('focusRescheduleDateLabel')),
               h('input', {
                 type: 'date',
+                className: 'gtd-desk__date',
                 'data-role': 'focus-card-reschedule-date',
                 'aria-label': t('focusRescheduleDateLabel'),
                 ref: dateInputRef,
-                /* 默认值是这条动作当前的完成时限；没有期限就是空的——不替用户猜一个日子。 */
                 defaultValue: initialDueDate,
                 disabled: pendingReschedule,
-                style: {
-                  font: 'inherit',
-                  fontSize: '13px',
-                  lineHeight: '19px',
-                  padding: '3px 6px',
-                  borderRadius: 'var(--dsw-radius-sm)',
-                  border: '1px solid var(--dsw-alias-border-l3)',
-                  background: 'var(--dsw-alias-bg-base)',
-                  color: 'var(--dsw-alias-label-primary)',
-                },
               }),
               h(
                 'button',
                 {
                   type: 'button',
+                  className: 'gtd-desk__btn gtd-desk__btn--compact',
                   'data-role': 'focus-card-reschedule-submit',
                   disabled: pendingReschedule,
                   onClick: submitReschedule,
-                  style: {
-                    padding: '4px 12px',
-                    border: '1px solid var(--dsw-alias-border-l3)',
-                    borderRadius: 'var(--dsw-radius-md)',
-                    background: 'var(--dsw-alias-bg-module-platform)',
-                    color: 'var(--dsw-alias-label-primary)',
-                    font: 'inherit',
-                    fontSize: '12.5px',
-                    lineHeight: '19px',
-                    fontWeight: 600,
-                    cursor: pendingReschedule ? 'progress' : 'pointer',
-                    opacity: pendingReschedule ? 0.7 : 1,
-                  },
                 },
                 pendingReschedule ? t('focusReschedulePending') : t('focusRescheduleSubmit'),
               ),
@@ -3037,20 +3028,11 @@ window.__ModuleLoader__.load({
                 'button',
                 {
                   type: 'button',
+                  className: 'gtd-desk__skip',
                   'data-role': 'focus-card-reschedule-cancel',
                   onClick: () => {
                     setRescheduleOpen(false);
                     setNeedDate(false);
-                  },
-                  style: {
-                    padding: '4px 8px',
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--dsw-alias-label-tertiary)',
-                    font: 'inherit',
-                    fontSize: '12.5px',
-                    lineHeight: '19px',
-                    cursor: 'pointer',
                   },
                 },
                 t('focusRescheduleCancel'),
@@ -3058,202 +3040,209 @@ window.__ModuleLoader__.load({
               needDate
                 ? h(
                     'p',
-                    {
-                      'data-role': 'focus-reschedule-need-date',
-                      style: {
-                        margin: 0,
-                        fontSize: '12px',
-                        lineHeight: '18px',
-                        color: 'var(--dsw-alias-label-primary)',
-                      },
-                    },
+                    { className: 'gtd-desk__card-status-text', 'data-role': 'focus-reschedule-need-date' },
                     t('focusRescheduleNeedDate'),
                   )
                 : null,
             )
           : null,
-        /* v2:project 卡脚（规格故事 22–24）：这一件在哪条项目线上。
-           **推不出项目就不画这一行**——缺就是缺，不编（Host 侧算好 `card.project`）。 */
+        /* 卡脚：这一件挂在哪个项目上。推不出就不画这一行——缺就是缺，不编。 */
         project === null
           ? null
           : h(
               'div',
-              {
-                className: 'gtd-focus-card__foot',
-                'data-role': 'focus-card-foot',
-                style: {
-                  marginTop: '14px',
-                  paddingTop: '10px',
-                  borderTop: '1px solid var(--dsw-alias-border-l2)',
-                  display: 'flex',
-                  alignItems: 'baseline',
-                  gap: '8px',
-                  flexWrap: 'wrap',
-                },
-              },
+              { className: 'gtd-desk__card-foot', 'data-role': 'focus-card-foot', style: deskText(12, 16) },
+              h('span', { 'data-role': 'focus-card-foot-label' }, `${t('focusCardFootProjectLabel')} `),
               h(
                 'span',
-                {
-                  'data-role': 'focus-card-foot-label',
-                  style: { fontSize: '11px', lineHeight: '16px', color: 'var(--dsw-alias-label-caption)' },
-                },
-                t('focusCardFootProjectLabel'),
-              ),
-              h(
-                'span',
-                {
-                  'data-role': 'focus-card-foot-project',
-                  'data-record': project.record,
-                  style: { fontSize: '12.5px', lineHeight: '19px', fontWeight: 600, color: 'var(--dsw-alias-label-primary)' },
-                },
+                { 'data-role': 'focus-card-foot-project', 'data-record': project.record },
                 project.name,
               ),
-              /* 「项目清单 →」：点它打开下钻层并把项目箱摆在那儿（故事 23）。 */
               h(
                 'button',
                 {
                   type: 'button',
+                  className: 'gtd-desk__card-foot-link',
                   'data-role': 'focus-card-foot-project-link',
                   onClick: () => {
                     if (typeof props.onOpenProject === 'function') props.onOpenProject(project);
-                  },
-                  style: {
-                    marginLeft: 'auto',
-                    padding: '0',
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--dsw-alias-label-secondary)',
-                    font: 'inherit',
-                    fontSize: '12px',
-                    lineHeight: '19px',
-                    cursor: 'pointer',
                   },
                 },
                 t('focusCardFootProjectLink'),
               ),
             ),
+        /* 印章：完成／改期按下去之后盖在卡上；写成功、新快照回来时整张卡被抽走。 */
+        stamp === null
+          ? null
+          : h(
+              'span',
+              {
+                className: 'gtd-desk__stamp',
+                'data-role': 'gtd-desk-stamp',
+                'data-stamp': stamp,
+                'aria-hidden': 'true',
+                style: deskText(24, 28),
+              },
+              stamp === 'complete' ? t('focusCompleteLabel') : t('focusRescheduleLabel'),
+            ),
       );
     }
 
     /**
-     * 「接下来」窄条队列：只写标题与时限。
-     *
-     * 窄、密、安静。点一条就把它换成主卡——这是**纯视图状态**，不写任何数据。
-     * @param {object} props - props：`items`、`t`、`onPick`。
+     * 空白卡：灯下没有该做的事。
+     * @param {object} props - props：`t`、`pending`、版面。
      * @returns {object} React 元素。
      */
-    function FocusNextQueue(props) {
-      const t = props.t;
-      const items = Array.isArray(props.items) ? props.items : [];
+    function DeskBlankCard(props) {
+      const pending = props.pending === true;
       return h(
-        'section',
+        'article',
         {
-          className: 'gtd-focus-next',
-          'data-role': 'focus-next',
-          'data-count': String(items.length),
-          style: { display: 'flex', flexDirection: 'column', gap: '6px' },
+          className: 'gtd-desk__card gtd-desk__card--blank',
+          'data-role': 'focus-card',
+          'data-state': pending ? 'pending' : 'empty',
+          'data-note-ref': '',
+          style: deskBox(props.cardLeft, DESK_ART.card.y, props.cardWidth, DESK_ART.card.height),
+        },
+        h(
+          'p',
+          {
+            className: 'gtd-desk__card-empty',
+            'data-role': pending ? 'focus-view-pending' : 'focus-card-empty',
+            style: deskText(12, 18),
+          },
+          pending ? props.t('focusViewPending') : props.t('focusCardEmpty'),
+        ),
+      );
+    }
+
+    /**
+     * 失败纸条：取数失败／未登录时压在卡上的那张纸。
+     *
+     * 与外壳的失败面同一套文案与角色（`error-heading`／`error-message`／`login-prompt`／
+     * `login-command`／`retry`），只是外观换成了桌上的一张纸。
+     * @param {object} props - props：`error`、`t`、`onRetry`、版面。
+     * @returns {object} React 元素。
+     */
+    function DeskFailureCard(props) {
+      const t = props.t;
+      const error = props.error !== null && typeof props.error === 'object' ? props.error : {};
+      const code = typeof error.code === 'string' && error.code.length > 0 ? error.code : 'unknown';
+      const message = typeof error.message === 'string' ? error.message : '';
+      const needsLogin = code === 'not-authenticated';
+      return h(
+        'article',
+        {
+          className: 'gtd-desk__card gtd-desk__card--failure',
+          'data-role': 'focus-card',
+          'data-state': 'error',
+          'data-note-ref': '',
+          style: deskBox(props.cardLeft, DESK_ART.card.y, props.cardWidth, DESK_ART.card.height),
         },
         h(
           'div',
-          {
-            'data-role': 'focus-next-head',
-            style: {
-              display: 'flex',
-              alignItems: 'baseline',
-              gap: '8px',
-              fontSize: '11px',
-              lineHeight: '16px',
-              color: 'var(--dsw-alias-label-caption)',
-            },
-          },
-          h('span', { 'data-role': 'focus-next-heading' }, t('focusNextHeading')),
+          { className: 'gtd-desk__note', 'data-role': 'gtd-desk-error-note', style: deskText(12, 18) },
           h(
-            'span',
-            { 'data-role': 'focus-next-count' },
-            `${items.length} ${t('countUnit')} · ${t('focusNextHint')}`,
+            'p',
+            { className: 'gtd-desk__note-heading', 'data-role': 'error-heading' },
+            t(needsLogin ? 'loginHeading' : 'errorHeading'),
+          ),
+          needsLogin
+            ? h(
+                'p',
+                { className: 'gtd-desk__note-text', 'data-role': 'login-prompt' },
+                t('loginHint'),
+                h('code', { className: 'gtd-desk__note-code', 'data-role': 'login-command' }, LOGIN_COMMAND),
+              )
+            : null,
+          message.length > 0
+            ? h('p', { className: 'gtd-desk__note-text', 'data-role': 'error-message' }, message)
+            : null,
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'gtd-desk__btn gtd-desk__btn--compact',
+              'data-role': 'retry',
+              onClick: props.onRetry,
+            },
+            t('retry'),
           ),
         ),
-        items.length === 0
-          ? h(
-              'p',
-              {
-                'data-role': 'focus-next-empty',
-                style: { margin: 0, fontSize: '12px', color: 'var(--dsw-alias-label-caption)' },
-              },
-              t('focusNextEmpty'),
-            )
-          : items.map((item, index) => {
-              const band = typeof item.timeBand === 'string' && item.timeBand.length > 0 ? item.timeBand : null;
-              const due = typeof item.dueLocal === 'string' && item.dueLocal.length > 0 ? item.dueLocal : '—';
-              return h(
-                'button',
-                {
-                  key: item.id,
-                  type: 'button',
-                  className: 'gtd-focus-next__item',
-                  'data-role': 'focus-next-item',
-                  'data-note-ref': item.id,
-                  'data-band': band === null ? '' : band,
-                  'data-order': String(index + 1),
-                  title: `${item.title}｜${t('focusNextHint')}`,
-                  onClick: () => props.onPick(item),
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    width: '100%',
-                    padding: '7px 10px',
-                    border: '1px solid var(--dsw-alias-border-l2)',
-                    borderLeft: `4px solid ${band === null ? 'var(--dsw-alias-border-l3)' : BAND_COLORS[band]}`,
-                    borderRadius: 'var(--dsw-radius-md)',
-                    background: 'var(--dsw-alias-bg-module-platform)',
-                    color: 'var(--dsw-alias-label-secondary)',
-                    font: 'inherit',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                  },
-                },
-                h(
-                  'span',
+      );
+    }
+
+    /**
+     * 卡夹：「接下来」的实体形态。
+     *
+     * 只写标题与时限；点一张就抽到主位——**纯视图状态，零写入**。
+     * @param {object} props - props：`items`、`t`、`onPick`、`originX`。
+     * @returns {object} React 元素。
+     */
+    function DeskHolder(props) {
+      const t = props.t;
+      const items = Array.isArray(props.items) ? props.items : [];
+      return h(
+        'div',
+        {
+          className: 'gtd-desk__holder',
+          'data-role': 'gtd-desk-holder',
+          style: deskBox(
+            DESK_ART.holder.x + props.originX,
+            DESK_ART.holder.y,
+            DESK_ART.holder.width,
+            DESK_ART.holder.height,
+          ),
+        },
+        h(
+          'section',
+          { className: 'gtd-desk__holder-body', 'data-role': 'focus-next', 'data-count': String(items.length) },
+          h(
+            'div',
+            { className: 'gtd-desk__holder-head', 'data-role': 'focus-next-head', style: deskText(12, 14) },
+            h('span', { 'data-role': 'focus-next-heading' }, t('focusNextHeading')),
+            h(
+              'span',
+              { className: 'gtd-desk__holder-count', 'data-role': 'focus-next-count' },
+              `${items.length} ${t('countUnit')}`,
+            ),
+          ),
+          items.length === 0
+            ? h(
+                'p',
+                { className: 'gtd-desk__holder-empty', 'data-role': 'focus-next-empty', style: deskText(12, 16) },
+                t('focusNextEmpty'),
+              )
+            : items.map((item, index) => {
+                const band = typeof item.timeBand === 'string' && item.timeBand.length > 0 ? item.timeBand : null;
+                const due = typeof item.dueLocal === 'string' && item.dueLocal.length > 0 ? item.dueLocal : '—';
+                return h(
+                  'button',
                   {
-                    'data-role': 'focus-next-title',
-                    style: {
-                      flex: '1 1 auto',
-                      minWidth: 0,
-                      fontSize: '13px',
-                      lineHeight: '19px',
-                      color: 'var(--dsw-alias-label-primary)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    },
+                    key: item.id,
+                    type: 'button',
+                    className: 'gtd-desk__slot',
+                    'data-role': 'focus-next-item',
+                    'data-note-ref': item.id,
+                    'data-band': band === null ? '' : band,
+                    'data-order': String(index + 1),
+                    title: `${item.title}｜${t('focusNextHint')}`,
+                    onClick: () => props.onPick(item),
+                    style: deskText(12, 14),
                   },
-                  item.title,
-                ),
-                h(
-                  'span',
-                  {
-                    'data-role': 'focus-next-due',
-                    style: {
-                      flex: '0 0 auto',
-                      fontSize: '11px',
-                      lineHeight: '16px',
-                      color: 'var(--dsw-alias-label-caption)',
-                      fontVariantNumeric: 'tabular-nums',
-                    },
-                  },
-                  due,
-                ),
-              );
-            }),
+                  h('span', { className: 'gtd-desk__slot-title', 'data-role': 'focus-next-title' }, item.title),
+                  h('span', { className: 'gtd-desk__slot-due', 'data-role': 'focus-next-due' }, due),
+                );
+              }),
+        ),
       );
     }
 
     /**
      * 下钻层：六箱全景，覆盖焦点区主位。
      *
-     * 画布是 v1 的原样（纸箱、便贴、箱签、已沉底、规则角标全在），
-     * 只是退到幕后——全景还在，只是不占主位。
+     * 画布是 v1 的原样（纸箱、便贴、箱签、已沉底、规则角标全在），只是退到幕后。
+     * 它**不在工位子树里**，所以照旧走宿主令牌。
      * @param {object} props - props：`open`、`snapshot`、`t`、`motions`、`onOpenNote`、`onClose`。
      * @returns {object} React 元素。
      */
@@ -3341,7 +3330,6 @@ window.__ModuleLoader__.load({
             t,
             motions: props.motions,
             onOpenNote: props.onOpenNote,
-            /* v2:project 下钻层里要盯住的纸箱（点卡脚的项目指针 → 项目箱）。 */
             focusContainer: props.focusContainer,
           }),
         ),
@@ -3349,16 +3337,20 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 焦点视图（v2 的默认视图）：四层结构。
+     * 焦点视图：像素工位（v3 默认视图）。
      *
-     * ① 顶部常驻 → ② 行动卡（主位）→ ③「接下来」窄条 → ④ 下钻入口（进去是六箱画布）。
-     * 换主卡与下钻都是**视图内状态**，不写任何数据（工作台是只读视图，ADR-0006）。
-     * @param {object} props - props：`snapshot`、`t`、`motions`、`onOpenNote`、`onReload`。
+     * 工位根 `gtd-desk` → 暗房间与桌面（`gtd-desk-room`／`gtd-desk-tabletop`）→
+     * 桌面场景（`gtd-desk-scene`）→ 台灯与深度指示块 → 小屏 → 卡夹 → 便签叠 → 小旗 →
+     * 行动卡 → 桌沿标牌 → 抽屉 → 开关。下钻层在工位**外面**，仍是 v1 画布。
+     *
+     * 换主卡（点卡夹、左右划）与下钻都是**视图内状态**，不写任何数据（ADR-0006）。
+     * @param {object} props - props：`snapshot`、`t`、`motions`、`onOpenNote`、`onReload`、
+     *   `write`、`onComplete`、`onReschedule`、`onSkip`、`skipped`、`viewMode`、`onViewChange`、
+     *   `error`、`onRetry`。
      * @returns {object} React 元素。
      */
     function FocusView(props) {
       const t = props.t;
-      /* 兜底对象是模块级的常量：每次渲染新建一个会让下面的复位 effect 反复触发。 */
       const snapshot =
         props.snapshot !== null && typeof props.snapshot === 'object' ? props.snapshot : EMPTY_SNAPSHOT;
       const focus =
@@ -3368,29 +3360,67 @@ window.__ModuleLoader__.load({
       const today = snapshot.today !== null && typeof snapshot.today === 'object' ? snapshot.today : {};
       const capacity =
         snapshot.capacity !== null && typeof snapshot.capacity === 'object' ? snapshot.capacity : {};
+      const error = props.error !== null && typeof props.error === 'object' ? props.error : null;
 
-      /* 视图内状态：换过的主卡与队列、下钻开关。刷新换快照时一并复位。 */
+      /* 像素网格按容器量：窗口或面板变化时重新取整（字号与网格同倍数）。 */
+      const rootRef = React.useRef(null);
+      const [viewport, setViewport] = React.useState(() => deskViewportOf(null));
+      React.useEffect(() => {
+        const measure = () => {
+          const next = deskViewportOf(rootRef.current);
+          setViewport((previous) =>
+            previous.width === next.width && previous.height === next.height && previous.dpr === next.dpr
+              ? previous
+              : next,
+          );
+        };
+        measure();
+        const hasWindowEvents =
+          typeof window !== 'undefined' && window !== null && typeof window.addEventListener === 'function';
+        if (hasWindowEvents) window.addEventListener('resize', measure);
+        let observer = null;
+        if (typeof ResizeObserver === 'function' && rootRef.current !== null) {
+          observer = new ResizeObserver(measure);
+          observer.observe(rootRef.current);
+        }
+        return () => {
+          if (hasWindowEvents) window.removeEventListener('resize', measure);
+          if (observer !== null) observer.disconnect();
+        };
+      }, []);
+      const geometry = deskGeometryOf(viewport);
+
+      /* 视图内状态：换过的主卡与队列、来路、下钻开关、便签叠／小旗开合、印章。刷新换快照时一并复位。 */
       const [override, setOverride] = React.useState(null);
       const [drilled, setDrilled] = React.useState(false);
-      /* v2:project 下钻层里要盯住哪个纸箱（点卡脚的项目指针 → 项目箱）。 */
       const [drillFocus, setDrillFocus] = React.useState(null);
+      const [history, setHistory] = React.useState([]);
+      const [notesOpen, setNotesOpen] = React.useState(false);
+      const [flagOpen, setFlagOpen] = React.useState(false);
+      const [stamp, setStamp] = React.useState(null);
+      const swipeRef = React.useRef(null);
       React.useEffect(() => {
         setOverride(null);
         setDrilled(false);
         setDrillFocus(null);
+        setHistory([]);
+        setNotesOpen(false);
+        setFlagOpen(false);
+        setStamp(null);
       }, [snapshot]);
+
+      /* 写失败时把印章撤掉：盖了章又没写成，会让人以为已经结算了。 */
+      React.useEffect(() => {
+        if (stamp === null) return;
+        const write = props.write !== null && typeof props.write === 'object' ? props.write : null;
+        if (write !== null && write.status === 'failed' && write.taskId === stamp.id) setStamp(null);
+      }, [props.write, stamp]);
 
       const baseCard = focus !== null && focus.card !== null && typeof focus.card === 'object' ? focus.card : null;
       const baseNext = focus !== null && Array.isArray(focus.next) ? focus.next : [];
 
-      /* v2:write 跳过（issue #10）：本次会话里被跳过的那几条。
-         它是**纯视图状态**——不写任何数据、不落任何本地存储，刷新页面就回来。 */
+      /* 跳过（issue #10）：本次会话里被跳过的那几条。纯视图状态，不落任何本地存储。 */
       const skipped = Array.isArray(props.skipped) ? props.skipped : [];
-      /**
-       * 这条是不是本次会话里被跳过了。
-       * @param {string} id - 动作 id。
-       * @returns {boolean} 被跳过时为 true。
-       */
       const isSkipped = (id) => typeof id === 'string' && skipped.includes(id);
 
       /* 主卡与队列：跳过的那些从焦点里去掉；主卡被跳过就顺延到队列第一条。 */
@@ -3404,50 +3434,329 @@ window.__ModuleLoader__.load({
           : fallbackCard !== null && !isSkipped(fallbackCard.id)
             ? fallbackCard
             : null;
-      /* 原来就没有主卡时不该凭空造一张：只有「主卡被跳过」才顺延。 */
       const hadCard = overrideCard !== null || fallbackCard !== null;
-      /* v2:project 窄条与主卡是**同一份形状**（Host 算好随快照过界）：
-         换主卡时直接把窄条拿过来用，Client 不重造一遍（重造就会漂）。 */
       const card = wanted !== null ? wanted : hadCard && pool.length > 0 ? pool[0] : null;
       const queue = card !== null && pool[0] !== undefined && pool[0].id === card.id ? pool.slice(1) : pool;
 
       /**
-       * 点一条窄条：把它换成主卡，原来的主卡回到队列最前面。
-       * @param {object} item - 被点的那条窄条。
+       * 点一条卡夹里的卡：把它抽到主位，原来的主卡插回队列最前面。
+       * @param {object} item - 被点的那条。
        */
       const pickFromQueue = (item) => {
         const rest = queue.filter((entry) => entry.id !== item.id);
-        setOverride({
-          card: item,
-          queue: card === null ? rest : [card, ...rest],
-        });
+        if (card !== null) setHistory((previous) => [card, ...previous].slice(0, 8));
+        setOverride({ card: item, queue: card === null ? rest : [card, ...rest] });
       };
 
-      /* v2:project 点卡脚的项目指针 → 打开下钻层，并把项目箱摆在那儿（故事 23）。
-         只是视图内状态：不写任何数据。 */
+      /** 左划／→：换到卡夹里的下一张（零写入）。 */
+      const swipeNext = () => {
+        if (queue.length === 0) return;
+        pickFromQueue(queue[0]);
+      };
+
+      /** 右划／←：回到上一张（零写入）。 */
+      const swipePrevious = () => {
+        if (history.length === 0) return;
+        const [previous, ...rest] = history;
+        setHistory(rest);
+        setOverride({ card: previous, queue: card === null ? queue : [card, ...queue] });
+      };
+
+      /**
+       * 按下手指：记下起点。
+       * @param {object} event - pointerdown。
+       */
+      const onSwipeStart = (event) => {
+        swipeRef.current = { x: event.clientX, y: event.clientY };
+      };
+
+      /**
+       * 松手：横向拖过 40 个 CSS 像素才换卡；纵向手势与轻点都不算。
+       * @param {object} event - pointerup。
+       */
+      const onSwipeEnd = (event) => {
+        const start = swipeRef.current;
+        swipeRef.current = null;
+        if (start === null) return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+        if (dx < 0) swipeNext();
+        else swipePrevious();
+      };
+
+      /**
+       * 键盘 ← → 等价于左右划；在输入框里打字时不动卡。
+       * @param {object} event - keydown。
+       */
+      const onDeskKeyDown = (event) => {
+        const target = event.target;
+        const tag = target !== null && target !== undefined && target.tagName ? String(target.tagName).toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+        if (target !== null && target !== undefined && target.isContentEditable === true) return;
+        if (event.key === 'ArrowRight') {
+          event.preventDefault();
+          swipeNext();
+        } else if (event.key === 'ArrowLeft') {
+          event.preventDefault();
+          swipePrevious();
+        }
+      };
+
+      /* v2:project 点卡脚的项目指针 → 打开下钻层，并把项目箱摆在那儿（故事 23）。 */
       const openProject = () => {
         setDrillFocus('project');
         setDrilled(true);
       };
 
-      const asOfText =
-        typeof capacity.asOf === 'string' && capacity.asOf.length > 0
-          ? `${t('focusCapacityAsOf')} ${capacity.asOf}`
-          : t('focusCapacityAsOfUnset');
-      const asOfSet = typeof capacity.asOf === 'string' && capacity.asOf.length > 0;
-      /* 落在可用窗口之外的日清成本：它不占可排时间，但仍然要还——这件事得让人看见。 */
-      const outsideMinutes = minutesOf(capacity.dailyMinutesOutsideWindow);
-      const outsideText =
-        outsideMinutes > 0
-          ? fillTemplate(t('focusCapacityOutsideWindow'), { minutes: outsideMinutes })
-          : null;
+      /**
+       * 按下完成／改期：先盖章，再走既有的写口。卡被抽走发生在写成功、新快照回来的时候。
+       * @param {string} taskId - 目标动作 id。
+       * @param {'complete' | 'reschedule'} kind - 哪个写口。
+       */
+      const onStamp = (taskId, kind) => {
+        setStamp({ id: taskId, kind });
+      };
+
+      const status = error !== null ? 'error' : focus === null ? 'pending' : 'ready';
+
+      /* 工位上的东西，按前后关系排：房间 → 场景 → 灯 → 小屏 → 卡夹 → 便签叠 → 小旗 → 卡 → 桌沿。 */
+      const deskChildren = [
+        h(
+          'div',
+          {
+            key: 'room',
+            className: 'gtd-desk__room',
+            'data-role': 'gtd-desk-room',
+            'aria-hidden': 'true',
+            style: deskBox(0, 0, geometry.boardWidth, geometry.boardHeight),
+          },
+          h('span', {
+            className: 'gtd-desk__wall-upper',
+            style: deskBox(0, 0, geometry.boardWidth, 40),
+          }),
+          h('span', {
+            className: 'gtd-desk__wall',
+            style: deskBox(0, 40, geometry.boardWidth, 100),
+          }),
+          h('span', {
+            className: 'gtd-desk__tabletop',
+            'data-role': 'gtd-desk-tabletop',
+            style: deskBox(0, 140, geometry.boardWidth, Math.max(1, geometry.boardHeight - 140)),
+          }),
+          h('span', {
+            className: 'gtd-desk__tabletop-edge',
+            style: deskBox(0, 140, geometry.boardWidth, 5),
+          }),
+          h('span', {
+            className: 'gtd-desk__front',
+            style: deskBox(0, 390, geometry.boardWidth, Math.max(0, geometry.boardHeight - 390)),
+          }),
+          h('span', {
+            className: 'gtd-desk__front-edge',
+            style: deskBox(0, 390, geometry.boardWidth, 4),
+          }),
+        ),
+        h('img', {
+          key: 'scene',
+          className: 'gtd-desk__scene',
+          'data-role': 'gtd-desk-scene',
+          alt: '',
+          draggable: false,
+          src: DESK_SCENE_URL,
+          style: {
+            position: 'absolute',
+            left: `calc(var(--gtd-u) * ${geometry.originX})`,
+            top: 0,
+            width: `calc(var(--gtd-u) * ${DESK_ART.width})`,
+            height: `calc(var(--gtd-u) * ${DESK_ART.height})`,
+            imageRendering: 'pixelated',
+            pointerEvents: 'none',
+            userSelect: 'none',
+          },
+        }),
+        h('div', {
+          key: 'lamp',
+          className: 'gtd-desk__lamp',
+          'data-role': 'gtd-desk-lamp',
+          'aria-hidden': 'true',
+          style: deskBox(
+            DESK_ART.lamp.x + geometry.originX,
+            DESK_ART.lamp.y,
+            DESK_ART.lamp.width,
+            DESK_ART.lamp.height,
+          ),
+        }),
+      ];
+
+      if (error === null) {
+        deskChildren.push(
+          h(DeskQuota, { key: 'quota', today, capacity, t, originX: geometry.originX }),
+          h(DeskScreen, { key: 'screen', card, today, t }),
+          h(DeskHolder, { key: 'holder', items: queue, t, onPick: pickFromQueue, originX: geometry.originX }),
+          h(DeskNotes, {
+            key: 'notes',
+            today,
+            capacity,
+            t,
+            open: notesOpen,
+            onToggle: () => setNotesOpen((open) => !open),
+            originX: geometry.originX,
+          }),
+          h(DeskFlag, {
+            key: 'flag',
+            reminders: focus !== null && Array.isArray(focus.reminders) ? focus.reminders : [],
+            t,
+            open: flagOpen,
+            onToggle: () => setFlagOpen((open) => !open),
+            originX: geometry.originX,
+          }),
+        );
+      }
+
+      if (error !== null) {
+        deskChildren.push(
+          h(DeskFailureCard, {
+            key: 'failure-card',
+            error,
+            t,
+            onRetry: props.onRetry,
+            cardLeft: geometry.cardLeft,
+            cardWidth: geometry.cardWidth,
+          }),
+        );
+      } else if (card !== null) {
+        deskChildren.push(
+          h(DeskActionCard, {
+            key: card.id,
+            card,
+            t,
+            onOpenNote: props.onOpenNote,
+            write: props.write,
+            onComplete: props.onComplete,
+            onReschedule: props.onReschedule,
+            onSkip: props.onSkip,
+            onRefresh: props.onReload,
+            onOpenProject: openProject,
+            stamp,
+            onStamp,
+            onSwipeStart,
+            onSwipeEnd,
+            cardLeft: geometry.cardLeft,
+            cardWidth: geometry.cardWidth,
+          }),
+        );
+      } else {
+        deskChildren.push(
+          h(DeskBlankCard, {
+            key: 'blank-card',
+            t,
+            pending: focus === null,
+            cardLeft: geometry.cardLeft,
+            cardWidth: geometry.cardWidth,
+          }),
+        );
+      }
+
+      if (error === null && skipped.length > 0) {
+        deskChildren.push(
+          h(
+            'p',
+            {
+              key: 'skip-notice',
+              className: 'gtd-desk__skip-notice',
+              'data-role': 'focus-skip-notice',
+              style: Object.assign(deskBox(18 + geometry.originX, 352, 180, 32), deskText(12, 16)),
+            },
+            t('focusSkipNotice'),
+          ),
+        );
+      }
+
+      deskChildren.push(
+        /* 桌沿两块标牌：切视图不再是网页标签（故事 22）。 */
+        h(
+          'div',
+          {
+            key: 'plaques',
+            className: 'gtd-desk__plaques-wrap',
+            'data-role': 'gtd-desk-plaques',
+            style: deskBox(
+              DESK_ART.plaques.x + geometry.originX,
+              DESK_ART.plaques.y,
+              DESK_ART.plaques.width,
+              DESK_ART.plaques.height,
+            ),
+          },
+          h(DeskViewSwitch, { t, mode: props.viewMode, onChange: props.onViewChange }),
+        ),
+        /* 桌下抽屉：六箱全景的入口。失败时不拉抽屉——那会是一张空画布，像「今天没活」。 */
+        error !== null
+          ? null
+          : h(
+          'div',
+          {
+            key: 'drawer',
+            className: 'gtd-desk__drawer-wrap',
+            'data-role': 'gtd-desk-drawer',
+            style: deskBox(
+              DESK_ART.drawer.x + geometry.originX,
+              DESK_ART.drawer.y,
+              DESK_ART.drawer.width,
+              DESK_ART.drawer.height,
+            ),
+          },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'gtd-desk__drawer',
+              'data-role': 'focus-drill-entry',
+              title: t('focusDrillEntry'),
+              'aria-label': t('focusDrillEntry'),
+              onClick: () => setDrilled(true),
+              style: deskText(12, 18),
+            },
+            h('span', { 'data-role': 'focus-drill-entry-label' }, t('focusDrillTitle')),
+          ),
+        ),
+        /* 桌角开关：刷新。 */
+        h(
+          'div',
+          {
+            key: 'power',
+            className: 'gtd-desk__switch-wrap',
+            'data-role': 'gtd-desk-switch',
+            style: deskBox(
+              DESK_ART.power.x + geometry.originX,
+              DESK_ART.power.y,
+              DESK_ART.power.width,
+              DESK_ART.power.height,
+            ),
+          },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'gtd-desk__power',
+              'data-role': 'refresh',
+              onClick: () => {
+                if (typeof props.onReload === 'function') props.onReload();
+              },
+              style: deskText(12, 18),
+            },
+            t('refresh'),
+          ),
+        ),
+      );
 
       return h(
         'div',
         {
           className: 'gtd-focus-view',
           'data-role': 'focus-view',
-          'data-state': focus === null ? 'pending' : 'ready',
+          'data-state': status,
+          ref: rootRef,
           style: {
             position: 'relative',
             display: 'flex',
@@ -3455,181 +3764,49 @@ window.__ModuleLoader__.load({
             flex: '1 1 auto',
             minHeight: 0,
             overflow: 'hidden',
-            background: 'var(--dsw-alias-bg-base)',
+            background: 'transparent',
           },
         },
-        /* ① 顶部常驻（与焦点契约无关，快照老到没有 focus 也照样显示） */
-        h(FocusTopBar, { today, capacity, t }),
         h(
           'div',
           {
-            'data-role': 'focus-capacity-bar',
-            style: {
-              padding: '10px 16px 8px',
-              fontSize: '11px',
-              lineHeight: '16px',
-              color: 'var(--dsw-alias-label-caption)',
-              background: 'var(--dsw-alias-bg-module-platform)',
-              borderBottom: '1px solid var(--dsw-alias-border-l2)',
-            },
+            className: 'gtd-desk',
+            'data-role': 'gtd-desk',
+            'data-scale': String(geometry.scale),
+            'data-layout': geometry.narrow ? 'narrow' : 'wide',
+            'data-art-width': String(geometry.boardWidth),
+            'data-art-height': String(geometry.boardHeight),
+            'data-card-width': String(geometry.cardWidth),
+            onKeyDown: onDeskKeyDown,
+            style: Object.assign({}, DESK_PALETTE, {
+              '--gtd-u': `${geometry.unit}px`,
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              overflow: 'hidden',
+              background: 'var(--gtd-room)',
+            }),
           },
-          h(
-            'div',
-            {
-              'data-role': 'focus-capacity-asof',
-              /* 没初始化这件事要一眼看得出来（`unset` 与 `set` 是两种状态，不是一句话的差别）。 */
-              'data-state': asOfSet ? 'set' : 'unset',
-            },
-            asOfText,
-          ),
-          outsideText === null
-            ? null
-            : h(
-                'div',
-                {
-                  'data-role': 'focus-capacity-outside',
-                  'data-minutes': String(outsideMinutes),
-                  style: { marginTop: '2px' },
-                },
-                outsideText,
-              ),
+          deskChildren,
         ),
-        h(FocusReminders, {
-          reminders: focus !== null && Array.isArray(focus.reminders) ? focus.reminders : [],
-          t,
-        }),
-        h(
-          'div',
-          {
-            className: 'gtd-focus-stage',
-            'data-role': 'focus-stage',
-            style: {
-              position: 'relative',
-              flex: '1 1 auto',
-              minHeight: '320px',
-              overflow: 'auto',
-            },
-          },
-          /* ② 行动卡 + ③「接下来」+ ④ 下钻入口 */
-          h(
-            'div',
-            {
-              className: 'gtd-focus-body',
-              'data-role': 'focus-body',
-              hidden: drilled,
-              style: {
-                display: drilled ? 'none' : 'flex',
-                flexDirection: 'column',
-                gap: '18px',
-                padding: '16px 16px 20px',
-              },
-            },
-            focus === null
-              ? h(
-                  'div',
-                  {
-                    'data-role': 'focus-view-pending',
-                    style: {
-                      padding: '12px 16px',
-                      border: '1px dashed var(--dsw-alias-border-l3)',
-                      borderRadius: 'var(--dsw-radius-md)',
-                      color: 'var(--dsw-alias-label-secondary)',
-                      fontSize: '13px',
-                      lineHeight: '20px',
-                    },
-                  },
-                  t('focusViewPending'),
-                )
-              : h(
-                  React.Fragment,
-                  null,
-                  h(FocusActionCard, {
-                    /* 卡换了人就重挂：改期编辑器是**这条动作**的视图内状态，
-                       不该带着上一条的日子跟到下一条身上去。 */
-                    key: card === null ? 'focus-card-empty' : card.id,
-                    card,
-                    t,
-                    onOpenNote: props.onOpenNote,
-                    /* v2:write 写口：状态与回调由外壳给（快照也住在外壳里）。 */
-                    write: props.write,
-                    onComplete: props.onComplete,
-                    onReschedule: props.onReschedule,
-                    onSkip: props.onSkip,
-                    onRefresh: props.onReload,
-                    /* v2:project 卡脚：点「项目清单 →」打开下钻层并把项目箱摆在那儿。 */
-                    onOpenProject: openProject,
-                  }),
-                  /* v2:write 跳过之后说清楚它去哪了：零写入，只在本次会话里。 */
-                  skipped.length > 0
-                    ? h(
-                        'p',
-                        {
-                          'data-role': 'focus-skip-notice',
-                          style: {
-                            margin: 0,
-                            fontSize: '11.5px',
-                            lineHeight: '17px',
-                            color: 'var(--dsw-alias-label-caption)',
-                          },
-                        },
-                        t('focusSkipNotice'),
-                      )
-                    : null,
-                  h(FocusNextQueue, { items: queue, t, onPick: pickFromQueue }),
-                ),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'gtd-focus-drill-entry',
-                'data-role': 'focus-drill-entry',
-                onClick: () => setDrilled(true),
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  width: '100%',
-                  padding: '10px 12px',
-                  border: '1px dashed var(--dsw-alias-border-l3)',
-                  borderRadius: 'var(--dsw-radius-md)',
-                  background: 'transparent',
-                  color: 'var(--dsw-alias-label-secondary)',
-                  font: 'inherit',
-                  fontSize: '12.5px',
-                  lineHeight: '19px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                },
-              },
-              h('span', { 'data-role': 'focus-drill-entry-label' }, t('focusDrillEntry')),
-              h(
-                'span',
-                {
-                  'data-role': 'focus-drill-entry-chev',
-                  'aria-hidden': 'true',
-                  style: { marginLeft: 'auto', color: 'var(--dsw-alias-label-caption)' },
-                },
-                '▾',
-              ),
-            ),
-          ),
-          /* ④ 下钻层：六箱全景原样（点开才画——下钻层默认不可见） */
-          drilled
-            ? h(FocusDrill, {
-                open: drilled,
-                snapshot,
-                t,
-                motions: props.motions,
-                onOpenNote: props.onOpenNote,
-                /* v2:project 点卡脚的项目指针进来时，项目箱是那个要看清的纸箱。 */
-                focusContainer: drillFocus,
-                onClose: () => setDrilled(false),
-              })
-            : null,
-        ),
+        /* 下钻层在工位外面：它是 v1 画布，照旧走宿主令牌。 */
+        drilled
+          ? h(FocusDrill, {
+              open: drilled,
+              snapshot,
+              t,
+              motions: props.motions,
+              onOpenNote: props.onOpenNote,
+              focusContainer: drillFocus,
+              onClose: () => setDrilled(false),
+            })
+          : null,
       );
     }
-    /* v2:focus end */
+    /* v3:desk end */
+
 
     /**
      * 主区面板（**外壳**）：打开就拉一次数，另配一个手动刷新按钮。
@@ -3830,7 +4007,47 @@ window.__ModuleLoader__.load({
         );
       }
       if (state.status === 'error') {
-        return h(WorkbenchFailure, { t, error: state.error, onRetry: load });
+        /* 画布视图的失败面照旧是网页面板；焦点视图的失败面是**压在工位卡上的一张纸**（故事 24）。
+           两个视图的失败面说的是同一套文案，只是呈现不同。 */
+        if (viewMode === VIEW_MODE.CANVAS) {
+          return h(WorkbenchFailure, { t, error: state.error, onRetry: load });
+        }
+        const failure = state.error !== null && typeof state.error === 'object' ? state.error : {};
+        const failureCode = typeof failure.code === 'string' && failure.code.length > 0 ? failure.code : 'unknown';
+        const needsLogin = failureCode === 'not-authenticated';
+        return h(
+          'div',
+          {
+            className: 'gtd-workbench',
+            'data-role': 'panel',
+            'data-state': needsLogin ? 'not-authenticated' : 'error',
+            'data-error-code': failureCode,
+            'data-view': viewMode,
+            style: {
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              minHeight: 0,
+            },
+          },
+          h(FocusView, {
+            snapshot: null,
+            t,
+            motions,
+            error: state.error,
+            onRetry: load,
+            onReload: load,
+            viewMode,
+            onViewChange: setViewMode,
+            onOpenNote: openNoteById,
+            write,
+            onComplete: completeTask,
+            onReschedule: rescheduleTask,
+            onSkip: skipTask,
+            skipped,
+          }),
+        );
       }
       return h(
         'div',
@@ -3842,7 +4059,10 @@ window.__ModuleLoader__.load({
           'data-view': viewMode,
           style: { position: 'relative', display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 },
         },
-        h(
+        /* 焦点视图不要网页标签：切视图与刷新都是桌沿/桌角上的东西（故事 22）。
+           画布视图照旧有这一条标题栏。 */
+        viewMode === VIEW_MODE.CANVAS
+          ? h(
           'header',
           {
             className: 'gtd-workbench__bar',
@@ -3878,7 +4098,8 @@ window.__ModuleLoader__.load({
             },
             t('refresh'),
           ),
-        ),
+        )
+          : null,
         /* v2:shell 视图层：Provider 不产生 DOM 元素，画布那一段的层级与拆分前完全一样 */
         h(
           NoteOpenContext.Provider,
@@ -3897,6 +4118,9 @@ window.__ModuleLoader__.load({
             onReschedule: rescheduleTask,
             onSkip: skipTask,
             skipped,
+            /* v3:desk 视图层把「怎么切视图」与「切到哪」也递下去：焦点视图里标签牌要能切回画布。 */
+            viewMode,
+            onViewChange: setViewMode,
           }),
         ),
         /* v2:shell end */        /* gtd:05 抽屉挂在画布**外面**、面板里面：它是覆盖层，不动画布版面 */
@@ -3929,6 +4153,13 @@ window.__ModuleLoader__.load({
      *    倾斜也一并取消。动效是锦上添花，不是信息本身。
      */
     const STYLE_TEXT = `
+@font-face {
+  font-family: 'GtdPixelFusion';
+  src: url('/gtd-workbench/assets/fonts/fusion-pixel-12px.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
 .gtd-workbench, .gtd-workbench * { font-family: var(--dsw-font-family); }
 .gtd-box { position: relative; }
 .gtd-box::after {
@@ -3960,13 +4191,337 @@ window.__ModuleLoader__.load({
 .gtd-note[data-motion="rescheduled"] { animation: gtd-flash 760ms ease-in-out both; }
 .gtd-note[data-motion="moved"] { animation: gtd-fly 620ms ease-out both; }
 .gtd-note[data-dragging="true"] { transition: none; cursor: grabbing; }
-/* v2:focus 焦点视图：窄条与下钻入口的悬停反馈（动效仍走减少动效偏好那一段） */
-.gtd-focus-next__item:hover { border-color: var(--dsw-alias-border-l3); }
-.gtd-focus-card__title button:hover { text-decoration: underline; }
-.gtd-focus-drill-entry:hover { border-color: var(--dsw-alias-label-tertiary); color: var(--dsw-alias-label-primary); }
-/* v2:two-minute 两分钟卡：卡面与正常动作有区别，但克制——描边略强一档，
-   不加实心色块、不抢主卡的视觉重心。 */
-.gtd-focus-card[data-state="two-minute"] { border-color: var(--dsw-alias-label-tertiary); }
+/* v3:desk 焦点视图是像素工位：工位子树自带字体与色板，**不用**宿主令牌（ADR-0012）。
+   下面这一段（从 .gtd-desk 开始）里不出现 --dsw-alias-*；六箱画布与下钻层照旧走宿主令牌。 */
+.gtd-desk, .gtd-desk * { font-family: 'GtdPixelFusion', 'Ark Pixel 12px', ui-monospace, monospace; }
+.gtd-desk { color: var(--gtd-paper); -webkit-font-smoothing: none; font-synthesis: none; }
+.gtd-desk__scene { display: block; }
+.gtd-desk__wall-upper { background: var(--gtd-wall-upper); }
+.gtd-desk__wall { background: var(--gtd-wall); }
+.gtd-desk__tabletop { background: var(--gtd-desk); }
+.gtd-desk__tabletop-edge { background: var(--gtd-desk-edge); }
+.gtd-desk__front { background: var(--gtd-front); }
+.gtd-desk__front-edge { background: var(--gtd-front-edge); }
+.gtd-desk__lamp { pointer-events: none; }
+.gtd-desk__quota {
+  background: #20242d;
+  border: calc(var(--gtd-u) * 1) solid #39404e;
+  box-shadow: inset calc(var(--gtd-u) * 1) calc(var(--gtd-u) * 1) 0 rgba(255, 255, 255, 0.06);
+}
+.gtd-desk__quota[data-on="1"] { background: var(--gtd-warm); }
+.gtd-desk__screen {
+  background: var(--gtd-screen);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-screen-edge);
+  box-shadow:
+    inset 0 calc(var(--gtd-u) * 2) 0 rgba(255, 255, 255, 0.05),
+    calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+  color: var(--gtd-screen-ink);
+  padding: calc(var(--gtd-u) * 8);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--gtd-u) * 2);
+  overflow: hidden;
+}
+.gtd-desk__screen-line { white-space: nowrap; overflow: hidden; text-overflow: clip; }
+.gtd-desk__screen-line[data-role="focus-card-capacity"] { white-space: normal; }
+.gtd-desk__screen-dim { color: var(--gtd-screen-dim); }
+.gtd-desk__screen-strong { color: #f2e9d6; }
+.gtd-desk__screen-bad { color: var(--gtd-screen-bad); }
+.gtd-desk__holder {
+  background: var(--gtd-holder);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-holder-edge);
+  box-shadow: inset 0 calc(var(--gtd-u) * 2) 0 rgba(255, 255, 255, 0.04);
+  padding: calc(var(--gtd-u) * 6);
+}
+.gtd-desk__holder-body { display: flex; flex-direction: column; gap: calc(var(--gtd-u) * 3); height: 100%; }
+.gtd-desk__holder-head { display: flex; justify-content: space-between; color: #8d8577; }
+.gtd-desk__holder-count { color: #6a6154; }
+.gtd-desk__holder-empty { margin: 0; flex: 1; display: grid; place-items: center; color: #6a6154; }
+.gtd-desk__slot {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: calc(var(--gtd-u) * 5);
+  flex: 1;
+  min-height: 0;
+  background: var(--gtd-paper);
+  color: var(--gtd-ink);
+  border: calc(var(--gtd-u) * 1) solid #14110c;
+  padding: 0 calc(var(--gtd-u) * 5);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  overflow: hidden;
+}
+.gtd-desk__slot:hover { background: var(--gtd-paper-2); }
+.gtd-desk__slot-title { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gtd-desk__slot-due { flex: 0 0 auto; color: var(--gtd-ink-dim); }
+.gtd-desk__notes {
+  background: var(--gtd-notes);
+  color: var(--gtd-ink);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-notes-edge);
+  box-shadow:
+    calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 3) 0 #cfc5ac,
+    calc(var(--gtd-u) * 8) calc(var(--gtd-u) * 6) 0 #b9af96;
+  padding: calc(var(--gtd-u) * 7);
+  cursor: pointer;
+  overflow: visible;
+  z-index: 2;
+}
+.gtd-desk__notes-head { display: flex; gap: calc(var(--gtd-u) * 4); }
+.gtd-desk__notes-hint { color: var(--gtd-ink-dim); }
+.gtd-desk__notes-fine { display: none; }
+.gtd-desk__notes[data-state="open"] .gtd-desk__notes-fine { display: block; }
+.gtd-desk__notes[data-state="open"] .gtd-desk__notes-hint { display: none; }
+.gtd-desk__notes-slip {
+  width: calc(var(--gtd-u) * 210);
+  margin-bottom: calc(var(--gtd-u) * 4);
+  background: var(--gtd-paper-2);
+  border: calc(var(--gtd-u) * 1) solid #14110c;
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.45);
+  padding: calc(var(--gtd-u) * 6);
+  color: var(--gtd-ink-dim);
+}
+.gtd-desk__flag { z-index: 3; }
+.gtd-desk__flag-button {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--gtd-u) * 4);
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: var(--gtd-flag);
+}
+.gtd-desk__flag-pole { display: block; width: calc(var(--gtd-u) * 2); height: calc(var(--gtd-u) * 30); background: #6a6154; }
+.gtd-desk__flag-banner {
+  display: block;
+  background: var(--gtd-flag);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-flag-edge);
+  color: #f6ecd9;
+  padding: 0 calc(var(--gtd-u) * 4);
+  line-height: calc(var(--gtd-u) * 20);
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+.gtd-desk__flag-list {
+  position: absolute;
+  bottom: calc(var(--gtd-u) * 40);
+  right: 0;
+  width: calc(var(--gtd-u) * 190);
+  background: var(--gtd-paper-2);
+  color: var(--gtd-ink);
+  border: calc(var(--gtd-u) * 1) solid #14110c;
+  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+  padding: calc(var(--gtd-u) * 6);
+}
+.gtd-desk__flag-heading { margin: 0 0 calc(var(--gtd-u) * 4); color: var(--gtd-ink-dim); }
+.gtd-desk__flag-items { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: calc(var(--gtd-u) * 3); }
+.gtd-desk__flag-item { display: flex; flex-direction: column; }
+.gtd-desk__flag-due { color: var(--gtd-ink-dim); }
+.gtd-desk__plaques { display: flex; gap: 0; height: 100%; }
+.gtd-desk__plaque { background: var(--gtd-plaque); border: calc(var(--gtd-u) * 1) solid var(--gtd-plaque-edge); color: #b9b0a0; font: inherit; cursor: pointer; padding: 0; text-align: center; }
+.gtd-desk__plaque:nth-child(1) { width: calc(var(--gtd-u) * 84); }
+.gtd-desk__plaque:nth-child(2) { width: calc(var(--gtd-u) * 94); }
+.gtd-desk__plaque[data-active="true"] { background: #333946; color: #f2e9d6; }
+.gtd-desk__drawer { width: 100%; height: 100%; background: #241d15; border: calc(var(--gtd-u) * 1) solid #4a3f2e; color: #9a8f7c; cursor: pointer; font: inherit; padding: 0; }
+.gtd-desk__drawer:hover { background: #2e2519; color: #cfc3ad; }
+.gtd-desk__power { width: 100%; height: 100%; background: var(--gtd-power); border: calc(var(--gtd-u) * 1) solid var(--gtd-plaque-edge); color: #b9b0a0; cursor: pointer; font: inherit; padding: 0; }
+.gtd-desk__power:hover { background: #262b35; color: #f2e9d6; }
+.gtd-desk__card {
+  box-sizing: border-box;
+  color: var(--gtd-ink);
+  background-color: var(--gtd-paper);
+  background-size: calc(var(--gtd-u) * 16);
+  background-repeat: repeat;
+  border: calc(var(--gtd-u) * 1) solid #14110c;
+  padding: calc(var(--gtd-u) * 10);
+  overflow: hidden;
+  animation: gtd-desk-card-in 180ms steps(4) both;
+}
+@keyframes gtd-desk-card-in {
+  from { opacity: 0; transform: translateX(calc(var(--gtd-u) * 8)); }
+  to { opacity: 1; transform: none; }
+}
+.gtd-desk__card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--gtd-u) * 26);
+  background: linear-gradient(
+    to right,
+    rgba(255, 206, 138, 0.16) 0,
+    rgba(255, 206, 138, 0.16) calc(var(--gtd-u) * 8),
+    rgba(255, 206, 138, 0.1) calc(var(--gtd-u) * 8),
+    rgba(255, 206, 138, 0.1) calc(var(--gtd-u) * 16),
+    rgba(255, 206, 138, 0.05) calc(var(--gtd-u) * 16),
+    rgba(255, 206, 138, 0.05) calc(var(--gtd-u) * 26)
+  );
+  pointer-events: none;
+}
+.gtd-desk__card-title { margin: calc(var(--gtd-u) * 10) 0 0; font-weight: 400; }
+.gtd-desk__card-open {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gtd-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gtd-desk__card-open:hover { text-decoration: underline; }
+.gtd-desk__card-due-row { margin-top: calc(var(--gtd-u) * 8); }
+.gtd-desk__card-tag { display: inline-block; padding: 0 calc(var(--gtd-u) * 4); border: calc(var(--gtd-u) * 1) solid var(--gtd-ink); }
+.gtd-desk__card-tag[data-overdue="true"] { color: var(--gtd-stamp); border-color: var(--gtd-stamp); }
+.gtd-desk__card-req { display: flex; gap: calc(var(--gtd-u) * 6); margin-top: calc(var(--gtd-u) * 10); }
+.gtd-desk__card-req-key { flex: none; color: var(--gtd-ink-dim); }
+.gtd-desk__card-req-text {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.gtd-desk__card-req-source { margin-left: calc(var(--gtd-u) * 6); color: var(--gtd-ink-dim); }
+.gtd-desk__card-actions {
+  position: absolute;
+  left: calc(var(--gtd-u) * 10);
+  right: calc(var(--gtd-u) * 10);
+  bottom: calc(var(--gtd-u) * 28);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: calc(var(--gtd-u) * 6);
+  align-items: center;
+}
+.gtd-desk__btn {
+  grid-column: 1 / -1;
+  font: inherit;
+  height: calc(var(--gtd-u) * 20);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-ink);
+  background: var(--gtd-paper);
+  color: var(--gtd-ink);
+  cursor: pointer;
+  padding: 0 calc(var(--gtd-u) * 8);
+}
+.gtd-desk__btn--solid { background: var(--gtd-ink); color: var(--gtd-paper); }
+.gtd-desk__btn--compact { grid-column: auto; }
+.gtd-desk__btn:disabled { opacity: 0.7; cursor: progress; }
+.gtd-desk__card-sep { grid-column: 1 / -1; border-top: calc(var(--gtd-u) * 1) dashed var(--gtd-ink-dim); height: 1px; }
+.gtd-desk__skip { grid-column: auto; border: 0; background: none; color: var(--gtd-ink-dim); font: inherit; padding: 0; cursor: pointer; text-align: left; }
+.gtd-desk__skip:hover { color: var(--gtd-ink); }
+.gtd-desk__skip-note { color: var(--gtd-ink-dim); text-align: right; }
+.gtd-desk__card-status {
+  position: absolute;
+  left: calc(var(--gtd-u) * 10);
+  right: calc(var(--gtd-u) * 10);
+  bottom: calc(var(--gtd-u) * 28);
+  z-index: 3;
+  background: var(--gtd-paper-2);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-ink);
+  padding: calc(var(--gtd-u) * 5);
+}
+.gtd-desk__card-status-text { margin: 0; }
+.gtd-desk__card-status-code { color: var(--gtd-ink-dim); }
+.gtd-desk__card-status-retry { margin-top: calc(var(--gtd-u) * 4); border: calc(var(--gtd-u) * 1) solid var(--gtd-ink); background: none; color: var(--gtd-ink); font: inherit; padding: 0 calc(var(--gtd-u) * 6); cursor: pointer; }
+.gtd-desk__card-editor {
+  position: absolute;
+  left: calc(var(--gtd-u) * 10);
+  right: calc(var(--gtd-u) * 10);
+  bottom: calc(var(--gtd-u) * 28);
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--gtd-u) * 6);
+  align-items: center;
+  background: var(--gtd-paper-2);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-ink);
+  padding: calc(var(--gtd-u) * 6);
+  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+}
+.gtd-desk__date { font: inherit; color: var(--gtd-ink); background: var(--gtd-paper); border: calc(var(--gtd-u) * 1) solid var(--gtd-ink); padding: 0 calc(var(--gtd-u) * 2); }
+.gtd-desk__card-foot {
+  position: absolute;
+  left: calc(var(--gtd-u) * 10);
+  right: calc(var(--gtd-u) * 10);
+  bottom: calc(var(--gtd-u) * 8);
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--gtd-u) * 6);
+  color: var(--gtd-ink-dim);
+  border-top: calc(var(--gtd-u) * 1) solid rgba(34, 29, 22, 0.25);
+  padding-top: calc(var(--gtd-u) * 2);
+}
+.gtd-desk__card-foot-link { margin-left: auto; border: 0; background: none; color: var(--gtd-ink-dim); font: inherit; cursor: pointer; padding: 0; }
+.gtd-desk__two-minute {
+  position: absolute;
+  top: calc(var(--gtd-u) * -6);
+  right: calc(var(--gtd-u) * 8);
+  z-index: 5;
+  max-width: calc(var(--gtd-u) * 160);
+  background: var(--gtd-paper-2);
+  border: calc(var(--gtd-u) * 1) solid var(--gtd-ink);
+  padding: calc(var(--gtd-u) * 2) calc(var(--gtd-u) * 6);
+  transform: rotate(-3deg);
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.35);
+}
+.gtd-desk__stamp {
+  position: absolute;
+  right: calc(var(--gtd-u) * 22);
+  top: calc(var(--gtd-u) * 102);
+  z-index: 6;
+  border: calc(var(--gtd-u) * 2) solid var(--gtd-stamp);
+  color: var(--gtd-stamp);
+  padding: 0 calc(var(--gtd-u) * 8);
+  transform: rotate(-9deg);
+  animation: gtd-desk-stamp 120ms steps(2) both;
+  pointer-events: none;
+}
+@keyframes gtd-desk-stamp {
+  from { opacity: 0; transform: rotate(-9deg) scale(1.3); }
+  to { opacity: 0.95; transform: rotate(-9deg) scale(1); }
+}
+.gtd-desk__card--blank { display: grid; place-content: center; }
+.gtd-desk__card-empty { margin: 0; text-align: center; color: var(--gtd-ink-dim); }
+.gtd-desk__card--failure { background: var(--gtd-paper); }
+.gtd-desk__note {
+  position: absolute;
+  left: calc(var(--gtd-u) * 8);
+  right: calc(var(--gtd-u) * 8);
+  top: calc(var(--gtd-u) * 18);
+  background: var(--gtd-paper-2);
+  border: calc(var(--gtd-u) * 1) solid #14110c;
+  box-shadow: calc(var(--gtd-u) * 4) calc(var(--gtd-u) * 4) 0 rgba(0, 0, 0, 0.45);
+  padding: calc(var(--gtd-u) * 8);
+  transform: rotate(-2deg);
+}
+.gtd-desk__note-heading { margin: 0 0 calc(var(--gtd-u) * 4); font-weight: 400; color: var(--gtd-ink); }
+.gtd-desk__note-text { margin: 0 0 calc(var(--gtd-u) * 6); color: var(--gtd-ink-dim); }
+.gtd-desk__note-code { display: block; margin-top: calc(var(--gtd-u) * 4); color: var(--gtd-ink); }
+.gtd-desk__skip-notice {
+  margin: 0;
+  background: var(--gtd-paper-2);
+  color: var(--gtd-ink);
+  border: calc(var(--gtd-u) * 1) solid #14110c;
+  box-shadow: calc(var(--gtd-u) * 3) calc(var(--gtd-u) * 3) 0 rgba(0, 0, 0, 0.45);
+  padding: calc(var(--gtd-u) * 4);
+  overflow: hidden;
+  z-index: 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gtd-desk__card,
+  .gtd-desk__stamp,
+  .gtd-desk__two-minute { transform: none !important; animation: none !important; transition: none !important; }
+}
 @media (prefers-reduced-motion: reduce) {
   .gtd-workbench *,
   .gtd-workbench *::before,

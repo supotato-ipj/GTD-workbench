@@ -134,12 +134,15 @@ test('焦点视图：主位恰好一张行动卡，四要素按约定出现', as
     }
     // 完成要求。
     assert.match(main.querySelector('[data-role="focus-card-requirement"]').textContent, /逐条核对模板/);
-    // 预计耗时。
-    assert.match(main.querySelector('[data-role="focus-card-estimate"]').textContent, /45/);
-    // 容量提示：装不装得下由 Host 说了算。
-    const capacity = main.querySelector('[data-role="focus-card-capacity"]');
-    assert.ok(capacity, '卡上没有容量提示');
+    // 预计耗时与容量判定在桌左小屏上（ADR-0012 修订 2），卡上不再写这两样。
+    const estimate = env.document.querySelector('[data-role="focus-card-estimate"]');
+    assert.ok(estimate, '桌左小屏上没有预计耗时');
+    assert.match(estimate.textContent, /45/);
+    assert.equal(main.querySelector('[data-role="focus-card-estimate"]'), null, '卡上又写了一遍预计耗时');
+    const capacity = env.document.querySelector('[data-role="focus-card-capacity"]');
+    assert.ok(capacity, '桌左小屏上没有容量提示');
     assert.equal(capacity.getAttribute('data-state'), 'fits');
+    assert.equal(main.querySelector('[data-role="focus-card-capacity"]'), null, '卡上又写了一遍容量提示');
   } finally {
     await env.unmount();
   }
@@ -165,12 +168,13 @@ test('焦点视图：字段缺失时那一行降级，整卡不消失', async ()
     assert.ok(main.querySelector('[data-role="focus-card-due"]'), '完成时限那一行没了');
     // 完成要求缺了 → 那一行不画，但卡还在。
     assert.equal(main.querySelector('[data-role="focus-card-requirement"]'), null);
-    // 预计耗时未估算 → 说「未估算」，不能画成 0 分钟。
-    assert.match(main.querySelector('[data-role="focus-card-estimate"]').textContent, /未估算/);
-    assert.doesNotMatch(main.querySelector('[data-role="focus-card-estimate"]').textContent, /0 分钟/);
+    // 预计耗时未估算 → 说「未估算」，不能画成 0 分钟（在桌左小屏上）。
+    const estimate = env.document.querySelector('[data-role="focus-card-estimate"]');
+    assert.match(estimate.textContent, /未估算/);
+    assert.doesNotMatch(estimate.textContent, /0 分钟/);
     // 装不装得下不知道 → 不装作知道。
     assert.equal(
-      main.querySelector('[data-role="focus-card-capacity"]').getAttribute('data-state'),
+      env.document.querySelector('[data-role="focus-card-capacity"]').getAttribute('data-state'),
       'unknown',
     );
   } finally {
@@ -276,17 +280,17 @@ test('焦点视图：抽屉里说清某条动作为什么没进焦点', async ()
   }
 });
 
-test('焦点视图：主卡弱化纸感——没有折角与纸纹；画布里的纸箱照旧有纸感', async () => {
+test('焦点视图：主卡是桌上一张纸卡——自带纸色与纸纹；下钻层的纸箱仍有折角', async () => {
   const snapshot = await snapshotUnderTest();
   const env = await mountClientPanel({ clientPath, props: { initialSnapshot: snapshot } });
   try {
     const card = env.document.querySelector('[data-role="focus-card"]');
     assert.ok(card, '没有主卡');
-    // 主卡没有折角，也没有任何纸纹装饰。
-    assert.equal(card.querySelector('.gtd-focus-card__fold'), null, '主卡上还有折角');
-    assert.doesNotMatch(card.getAttribute('style') ?? '', /repeating-linear-gradient/, '主卡上还有纸纹');
-    // 纸色调留着。
-    assert.match(card.getAttribute('style') ?? '', /background:\s*var\(--dsw-alias-bg-base\)/);
+    // 行动卡是工位上的一张纸：纸色 + 随包的纸纹（ADR-0012 修订：卡是竖版、立在桌面上）。
+    assert.match(card.getAttribute('class') ?? '', /gtd-desk__card/);
+    assert.match(card.getAttribute('style') ?? '', /paper-grain\.png/);
+    // 工位子树不借宿主令牌——纸色与墨色都是工位自己的色板。
+    assert.doesNotMatch(card.getAttribute('style') ?? '', /--dsw-alias-/);
 
     // 下钻层里的 v1 纸箱：纸感原样保留。
     await env.click(env.document.querySelector('[data-role="focus-drill-entry"]'));
@@ -323,8 +327,12 @@ test('焦点视图：取数失败与未登录仍然明确说原因，不画空�
     await panel.flush();
     assert.equal(panel.container.querySelector('[data-role="panel"]').getAttribute('data-state'), 'not-authenticated');
     assert.ok(panel.container.querySelector('[data-role="login-prompt"]'), '未登录没有给登录提示');
-    // 焦点视图是默认视图，但它不能把错误态吞掉。
-    assert.equal(panel.container.querySelector('[data-role="focus-view"]'), null, '失败时还在画焦点视图');
+    // 失败不是空板：焦点视图还在，但卡上压着一张说原因的纸条（故事 24）。
+    assert.equal(panel.container.querySelector('[data-role="focus-view"]').getAttribute('data-state'), 'error');
+    const note = panel.container.querySelector('[data-role="gtd-desk-error-note"]');
+    assert.ok(note, '失败时卡上没有压纸条');
+    assert.match(note.textContent, /没登录/);
+    assert.equal(panel.container.querySelector('[data-role="focus-card-empty"]'), null, '失败被画成了「今天没活」');
   } finally {
     await panel.cleanup();
   }

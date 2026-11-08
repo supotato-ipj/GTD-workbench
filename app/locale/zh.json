@@ -70,10 +70,10 @@
   "focusCapacityNoteFits": "还剩 {minutes} 分钟，这件 {estimate} 分钟",
   "focusCapacityNoteNoFits": "还剩 {minutes} 分钟，这件要 {estimate} 分钟",
   "focusCapacityNoteUnknown": "还剩 {minutes} 分钟",
-  "focusNextHeading": "接下来",
-  "focusNextHint": "点一条即换主卡",
-  "focusNextEmpty": "接下来没有别的了",
-  "focusCardEmpty": "现在没有一件该做的事",
+  "focusNextHeading": "卡夹",
+  "focusNextHint": "点一张抽到主位",
+  "focusNextEmpty": "卡夹空着",
+  "focusCardEmpty": "现在没有该做的事",
   "focusCardTwoMinute": "两分钟卡：直接做掉、别判定",
   "focusCardFootProjectLabel": "项目",
   "focusCardFootProjectLink": "项目清单 →",
@@ -110,5 +110,7 @@
   "sunkWindowUnit": "天",
   "sunkEmpty": "最近七天没有完成的事",
   "boxCompletions": "完成",
-  "boxCompletionsHint": "最近七天这个纸箱里勾完的条数"
+  "boxCompletionsHint": "最近七天这个纸箱里勾完的条数",
+  "focusNotesHint": "点开看参数",
+  "focusReminderFlag": "等回 {count}"
 }

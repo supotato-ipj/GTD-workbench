@@ -185,47 +185,80 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 |---|---|---|
 | **外壳** | `WorkbenchPanel` | 取数、加载态、错误态、刷新、当前画哪一个视图。**它自己不画画布。** |
 | **视图** | `CanvasView` | v1 的六箱画布（纸箱、便贴、箱签、已沉底、规则角标、本周主攻带）——原样下沉，不重写 |
-| **视图** | `FocusView` | 焦点引导器（issue #6「05 · 焦点只读上线」）：四层结构，默认视图 |
+| **视图** | `FocusView` | 焦点视图：**像素工位**（issue #13、ADR-0012），默认视图 |
 
 - 视图只收 `snapshot` 与几个回调，**加新视图不用动取数、错误处理与刷新**。
 - 视图切换的状态住在外壳里（`viewMode`），摆在面板根上：`data-role="panel"` 的 `data-view="canvas|focus"`。
   切换控件是 `data-role="view-switch"` 里的两个按钮（`view-switch-canvas`／`view-switch-focus`）。
-- **默认视图是焦点引导器**（`data-view="focus"`）。想直接看画布可以切到 `view-switch-canvas`，
-  也可以在焦点视图里点下钻入口（那条路走的是同一张画布）。
+- **默认视图是焦点视图**（`data-view="focus"`）。想直接看画布可以点桌沿的「六箱画布」标牌，
+  也可以在焦点视图里拉开桌下的抽屉（那条路走的是同一张画布）。
   外壳接受一个可选的 `initialView`（`'canvas'`）把初始视图定成画布——测试与深链用。
+- **焦点视图不要网页标签**：切视图的两块标牌与刷新开关都在桌沿/桌角上（故事 22）；
+  标题栏只在六箱画布视图里出现，焦点视图的 DOM 里没有 `panel-title`。
 - 画布那一段的 DOM 层级与拆分前完全一样——视图层用 Fragment 返回，不套任何新元素，
   既有选择器（`[data-role="board"]` 等）一条都不用改。
 
-## 焦点视图（四层）
+## 焦点视图：像素工位
 
-`FocusView` 照 `prototype/index.html`（工单 04 的一次性原型，用户已过观感门禁）的四层：
+`FocusView` 照 `prototype/pixel-desk/index.html`（工单 #13 的一次性假数据原型，第三版已过观感门禁、
+ADR-0012 有修订节）画成一个**像素工位**：微俯视角，一张桌面、一盏台灯，灯光照在桌面上，
+行动卡立在桌面主位，是画面里唯一被照亮的主体（ADR-0012）。
 
-| 层 | DOM 角色 | 内容 |
+| 位置 | DOM 角色 | 内容 |
 |---|---|---|
-| ① 顶部常驻 | `focus-top` / `focus-stat`（`data-stat="daily｜remaining｜deep-quota"`） | 今日日清几笔未还、今日剩余可排时间、深度名额；下面一行 `focus-capacity-bar` 里是 `focus-capacity-asof`（「容量参数定于 <日期>」，没初始化时 `data-state="unset"`）与 `focus-capacity-outside`（窗口外的那笔日清不占可排时间） |
-| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`（来源标记 `focus-card-requirement-source`，写成「来自记录页」）、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity`；事实行之下是三个控件 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入）；**卡脚** `focus-card-foot`（项目名 `focus-card-foot-project` + 入口 `focus-card-foot-project-link`）——推不出项目就不画这一行 |
-| ③「接下来」窄条 | `focus-next` / `focus-next-item`（`data-note-ref`） | 只写标题与时限；**点一条即换主卡**（视图内状态，不写任何数据） |
-| ④ 下钻层 | `focus-drill-entry` / `focus-drill` / `focus-back` | 点开后是 v1 的六箱画布原样，带一个「回到焦点」 |
+| **工位根** | `gtd-desk`（`data-scale`／`data-layout`／`data-art-width`／`data-art-height`／`data-card-width`、`--gtd-u`） | 暗房间、桌面与所有桌面物件；自带色板与点阵字体 |
+| 暗房间与桌面 | `gtd-desk-room` / `gtd-desk-tabletop` | 墙（上方约三分之一）与桌面（下方约三分之二）；宽窗多出来的空间由暗房间延伸填满 |
+| 桌面场景 | `gtd-desk-scene` | 随包的 600×420 像素场景（台灯、熄屏显示器、杯子、笔筒、桌面阴影）；卡是 DOM，不在图里 |
+| 台灯与深度名额 | `gtd-desk-lamp` / `gtd-desk-quota`（含 `focus-stat[data-stat="deep-quota"]`） | 灯座上一枚方形指示块：用掉就熄灭；数值仍带 `data-used` / `data-total` |
+| 桌左小屏 | `gtd-desk-screen` | **预计耗时** `focus-card-estimate`、**装不装得下** `focus-card-capacity`（`data-state="fits｜no｜unknown"`）、**剩余可排时间** `focus-stat[data-stat="remaining"]`；卡上不再写耗时与容量（ADR-0012 修订 2） |
+| 行动卡（主位） | `focus-card`（`data-note-ref`） | 竖版纸卡：标题 `focus-card-title` / `focus-card-open`、时限标签 `focus-card-due`（逾期另标 `focus-card-overdue`）、完成要求 `focus-card-requirement`（来源 `focus-card-requirement-source`）、写口 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入）／`focus-card-skip-note`、卡脚 `focus-card-foot`（项目名 + 入口）。两分钟卡另贴一张小纸条 `focus-card-two-minute` |
+| 卡夹（原「接下来」） | `gtd-desk-holder` / `focus-next` / `focus-next-item`（`data-note-ref`） | 立式卡夹，每张只露标题与时限；**点一张抽到主位**（视图内状态，零写入） |
+| 便签叠（今日日清） | `gtd-desk-notes` / `focus-stat[data-stat="daily"]` | 一叠未还的日清便签；`focus-capacity-bar` 里的「容量参数定于 <日期>」（`focus-capacity-asof`，未初始化 `data-state="unset"`）与「窗口外那笔日清不占可排时间」（`focus-capacity-outside`）收在叠里，**点开才看见** |
+| 小旗（到期没回） | `gtd-desk-flag` / `focus-reminders` / `focus-reminder` | 桌上一面旗，旗面写「等回 N」；点开才列出是哪几条 |
+| 桌沿标牌 | `gtd-desk-plaques` / `view-switch` / `view-switch-canvas` / `view-switch-focus` | 六箱画布／焦点视图两块标牌立在桌沿 |
+| 桌下抽屉 | `gtd-desk-drawer` / `focus-drill-entry` | 拉开抽屉就是 v1 的六箱画布原样（下钻层 `focus-drill`，带「回到焦点」`focus-back`） |
+| 桌角开关 | `gtd-desk-switch` / `refresh` | 刷新 |
 
 几条口径：
 
 - **Client 只画不算**：资格、排序、容量、可排时间、主卡与队列的内容全部来自快照
   （`focus.card`／`focus.next`／`today.*`／`capacity.*`），这一层不重算任何一个。
-- **缺字段就少一行，不整卡消失**：完成要求缺失 → 那一行不画；预计耗时为 `null` → 写「未估算」
+- **缺字段就少一行，不整卡消失**：完成要求缺失 → 那一行不画；预计耗时为 `null` → 小屏写「未估算」
   （不是「0 分钟」）；容量提示的 `fits` 为 `null` → 不装作知道装不装得下。
-- **主卡弱化纸感**（用户裁定）：主卡**没有折角、没有纸纹**，只留纸色调与一层浅影；
-  下钻层里的 v1 纸箱与便贴**纸感原样**（`.gtd-box__fold` 与 `.gtd-box::after` 的纸纹都没动）。
-- **配色与字体全部走宿主令牌**（`--dsw-alias-*`），明暗两套主题自动可读；
-  `prefers-reduced-motion: reduce` 时动效照旧压到近乎为零。
+- **主卡是桌上的一张纸卡**：纸色 + 随包的纸纹素材 + 左侧灯照的一档亮边。
+  「主卡弱化纸感（没有折角、没有纸纹）」那条旧裁定**已被 ADR-0012 取代**——焦点视图是工位，
+  卡本来就是一张纸；下钻层里的 v1 纸箱与便贴**纸感原样**（`.gtd-box__fold` 与 `.gtd-box::after` 的纸纹都没动）。
+- **工位自带色板与字体，六箱画布照旧走宿主令牌**：工位子树里不出现 `--dsw-alias-*`；
+  字体只在工位容器内声明（`'GtdPixelFusion', 'Ark Pixel 12px', ui-monospace, monospace`），
+  不在 `body`／`:root` 上覆盖宿主的字体令牌。明暗主题下焦点视图都是夜色（ADR-0012 的决定 3），
+  这是已知代价。
+- **`prefers-reduced-motion: reduce`**：印章与滑入不播，动效压到近乎为零。
 - **焦点视图里不另造 `data-note-id`**：它指向的是「一条便贴」，
-  焦点视图的元素（卡、窄条、提醒位）用 `data-note-ref` 指回那条动作，
+  焦点视图的元素（卡、卡夹、小旗）用 `data-note-ref` 指回那条动作，
   免得 `[data-note-id="…"]` 这种选择器命中错东西。
+- **取数失败与未登录是压在卡上的一张纸**：焦点视图在失败时仍然画工位，卡上压一张纸条
+  （`gtd-desk-error-note`），里面是 `error-heading`／`error-message`／`login-prompt`／
+  `login-command`／`retry`——不是空板，也不是「今天没活」。
 - **抽屉里说清「为什么没进焦点」**：便贴 `eligible` 为 false 时，抽屉里出现
   `data-role="drawer-ineligible"`（带 `data-reason`），原因值原样取 Host 给的 `ineligibleReason`。
 - **抽屉里也说清这条动作自己的完成要求**：`data-role="drawer-requirement"`（原文）与
   `data-role="drawer-requirement-source"`（来源标记，写成「来自记录页」）。
   它与记录页那一段的「验收标准」**层级不同、可以并存**，但**同一段文字只画一遍**
   （画了两遍就是噪音）；这条动作没有完成要求时写「未写完成要求」。
+
+### 工位素材与像素网格
+
+- **素材随包发**：`app/assets/` 下是点阵字体（`fonts/fusion-pixel-12px.woff2` + `LICENSE-OFL.txt`）
+  与像素素材（`pixel/desk-scene.png` 600×420 的桌面场景、`pixel/paper-grain.png` 16×16 纸纹）。
+  Host 在 `app/index.js` 里开一条 **prefix 路由** `/gtd-workbench/assets`（`lib/assets.js`），
+  只发白名单类型；越界、未知、目录一律 404。客户端仍是**单文件**——素材是 URL，不是模块。
+- **一个美术像素 = `scale` 个设备像素**：`deskGeometryOf` 先试 3、再 2、最后 1，
+  `--gtd-u` = `scale / devicePixelRatio`（CSS px）。字号只有 12 与 24 两个美术像素台阶，
+  所以 `字号 × devicePixelRatio` 总是 12 的整数倍（点阵字不落半像素）。
+- **版面**：宽窗多出来的空间由暗房间与桌面延伸填满，不出黑边；窗口比 600×420 还窄时
+  （`data-layout="narrow"`）先把卡加宽，而不是把字号压到 12 以下。
+- **长标题**：卡内宽 180 美术像素，标题最多三行（`-webkit-line-clamp: 3`），
+  完整标题在 `title` 与 `aria-label` 上，抽屉里能读到全文。
 
 ## 卡脚的项目指针（规格故事 22–24）
 

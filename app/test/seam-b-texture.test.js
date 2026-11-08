@@ -134,11 +134,15 @@ test('质感：纸箱有折角、阴影与纸纹', () => {
   assert.match(styles, /box-shadow|drop-shadow/);
 });
 
-test('质感：字体与配色跟随宿主主题——不写死字体，文字与边框全走令牌', () => {
+test('质感：六箱画布的字体与配色跟随宿主主题——不写死字体，文字与边框全走令牌', () => {
   const { module } = createClientModule(clientPath);
-  assert.match(module.styles, /font-family:\s*var\(--dsw-font-family\)/);
-  // 样式表里每一处 font-family 都必须指向宿主的字体令牌，不出现写死的字体族名。
-  const families = [...module.styles.matchAll(/font-family:\s*([^;]+)/g)].map((match) => match[1].trim());
+  const { styles } = module;
+  assert.match(styles, /\.gtd-workbench, \.gtd-workbench \* \{ font-family: var\(--dsw-font-family\); \}/);
+  // 画布这一段（焦点视图之外的公共样式）没有写死的字体族名；工位自带字体在另一段里声明。
+  const deskStart = styles.indexOf('.gtd-desk, .gtd-desk *');
+  const faceEnd = styles.indexOf('}', styles.indexOf('@font-face')) + 1;
+  const canvasStyles = styles.slice(faceEnd, deskStart < 0 ? styles.length : deskStart);
+  const families = [...canvasStyles.matchAll(/font-family:\s*([^;]+)/g)].map((match) => match[1].trim());
   assert.ok(families.length > 0, '样式表没有声明字体');
   for (const family of families) assert.equal(family, 'var(--dsw-font-family)');
 
@@ -152,6 +156,22 @@ test('质感：字体与配色跟随宿主主题——不写死字体，文字�
   // 文字与边框用的都是 --dsw-alias-*。
   assert.match(markup, /var\(--dsw-alias-label-primary\)/);
   assert.match(markup, /var\(--dsw-alias-border-l[234]\)/);
+});
+
+test('质感：工位子树反过来——自带色板与字体，不借宿主令牌', () => {
+  const { module } = createClientModule(clientPath);
+  const { styles } = module;
+  const start = styles.indexOf('.gtd-desk, .gtd-desk *');
+  const end = styles.indexOf('@media (prefers-reduced-motion: reduce)', start);
+  assert.ok(start >= 0, '样式表里没有工位那一段');
+  assert.ok(end > start, '工位那一段没有收尾');
+  const deskStyles = styles.slice(start, end);
+  // 工位子树里一个宿主别名令牌都不许出现。
+  assert.doesNotMatch(deskStyles, /--dsw-alias-/, '工位样式里借了宿主令牌');
+  // 自带字体族（带兜底链）与自带色板。
+  assert.match(deskStyles, /font-family:\s*'GtdPixelFusion',\s*'Ark Pixel 12px'/);
+  assert.match(deskStyles, /var\(--gtd-paper\)/);
+  assert.match(deskStyles, /var\(--gtd-screen-ink\)/);
 });
 
 test('质感：便贴与纸箱分成两层，标题读得出来', () => {

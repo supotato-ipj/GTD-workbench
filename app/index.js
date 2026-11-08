@@ -8,6 +8,7 @@
  * 不写任何本地文件（ADR-0006）；写滴答只开「完成」与「改期」这两个写口（ADR-0006 修订）。
  */
 
+import { ASSETS_ROUTE_PREFIX, createAssetsHandler } from './lib/assets.js';
 import { createTasksHandler, TASKS_ROUTE_PATH } from './lib/route.js';
 import { createActionsHandler, ACTIONS_ROUTE_PATH } from './lib/write-route.js';
 import { runDidaAction, runDidaTaskCompleted, runDidaTaskFilter } from './lib/dida.js';
@@ -56,5 +57,16 @@ export function apply(ctx) {
         handler: actionsHandler,
       }),
     `gtd-workbench: POST ${ACTIONS_ROUTE_PATH}`,
+  );
+  // 工位素材：点阵字体与像素素材随包发，走一条**前缀路由**（ADR-0012）。
+  // 客户端仍是单文件——素材是 URL，不是模块。
+  ctx.effect(
+    () =>
+      ctx.webServer.register({
+        kind: 'prefix',
+        path: ASSETS_ROUTE_PREFIX,
+        handler: createAssetsHandler(),
+      }),
+    `gtd-workbench: GET ${ASSETS_ROUTE_PREFIX}/*`,
   );
 }

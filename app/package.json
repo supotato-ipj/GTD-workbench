@@ -16,7 +16,8 @@
     "cordis.patch.yml",
     "lib/*.js",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "assets/**/*"
   ],
   "scripts": {
     "test": "node --test --test-isolation=none --test-concurrency=1 \"test/**/*.test.js\""
