@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>像素工位 · 一次性原型（虚构数据）</title>
+<!-- 字体用 data URI 内联：从 file:// 打开时，浏览器会按 CORS 规则拒绝加载本地字体文件 -->
+<link rel="stylesheet" href="font/font.css">
+<style>
+  /*
+   * 一次性假数据原型（工单 #13 的观感门禁）。
+   * 不接真实快照、不写任何数据、不进主线。
+   * 第三版：卡竖着、更矮更胖（200×280）；桌面抬到画面下方三分之二；
+   * 日清便签叠压在卡夹下方；时限只留卡上那枚标签，
+   * 桌左小屏只报「预计耗时 / 装不装得下 / 今天还剩多少可排时间」。
+   */
+
+  :root {
+    --u: 3px;
+    --px: 'GtdPixel', ui-monospace, monospace;
+    --paper: #e9e1cd;
+    --ink: #221d16;
+    --ink-dim: #6b6150;
+    --room: #0d0e12;
+    --stamp: #a63f2e;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--room);
+    color: #cfc7b4;
+    font-family: var(--px);
+    font-synthesis: none;
+    -webkit-font-smoothing: none;
+    overflow: hidden;
+  }
+
+  /* ── 原型控制条（不属于场景） ───────────────────────────── */
+
+  .probe {
+    position: fixed;
+    left: 12px;
+    top: 10px;
+    z-index: 50;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 13px;
+    color: #8d8577;
+  }
+  .probe b { color: #b9b0a0; font-weight: 400; }
+  .probe button {
+    font: inherit;
+    font-size: 13px;
+    color: #b9b0a0;
+    background: #171a21;
+    border: 1px solid #2b303a;
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+  .probe button[aria-pressed="true"] { background: #2b303a; color: #efe6d2; }
+
+  footer {
+    position: fixed;
+    left: 12px;
+    bottom: 8px;
+    font-size: 12px;
+    color: #5d564b;
+    z-index: 50;
+  }
+
+  /* ── 舞台 ───────────────────────────────────────────────── */
+
+  .stage {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .world {
+    position: relative;
+    width: calc(var(--u) * 600);
+    height: calc(var(--u) * 420);
+  }
+
+  .world > canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+  }
+
+  .world .abs {
+    position: absolute;
+    left: calc(var(--u) * var(--x));
+    top: calc(var(--u) * var(--y));
+    width: calc(var(--u) * var(--w));
+    height: calc(var(--u) * var(--h));
+  }
+
+  /* ── 竖版行动卡：立在桌面上 ─────────────────────────────── */
+
+  .card {
+    position: absolute;
+    left: calc(var(--u) * 210);
+    top: calc(var(--u) * 90);
+    width: calc(var(--u) * 200);
+    height: calc(var(--u) * 280);
+    background: var(--paper);
+    color: var(--ink);
+    border: calc(var(--u) * 1) solid #14110c;
+    box-shadow:
+      calc(var(--u) * 5) calc(var(--u) * 7) 0 rgba(0, 0, 0, .5),
+      inset calc(var(--u) * 1) calc(var(--u) * 1) 0 rgba(255, 255, 255, .4);
+    padding: calc(var(--u) * 10);
+    overflow: hidden;
+    transition: transform .22s steps(5), opacity .22s linear;
+  }
+  .card.leaving { transform: translate(calc(var(--u) * -210), calc(var(--u) * 22)) rotate(-6deg); opacity: 0; }
+
+  /* 灯从左侧来：卡面左缘亮一档（阶梯，不是渐变） */
+  .card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: calc(var(--u) * 26);
+    background:
+      linear-gradient(to right,
+        rgba(255, 206, 138, .16) 0,
+        rgba(255, 206, 138, .16) calc(var(--u) * 8),
+        rgba(255, 206, 138, .10) calc(var(--u) * 8),
+        rgba(255, 206, 138, .10) calc(var(--u) * 16),
+        rgba(255, 206, 138, .05) calc(var(--u) * 16),
+        rgba(255, 206, 138, .05) calc(var(--u) * 26));
+    pointer-events: none;
+  }
+
+  .card .ttl {
+    margin: 0;
+    font-size: calc(var(--u) * 24);
+    line-height: calc(var(--u) * 26);
+    font-weight: 400;
+    position: relative;
+  }
+
+  .card .tag {
+    position: relative;
+    display: inline-block;
+    margin-top: calc(var(--u) * 8);
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 16);
+    padding: 0 calc(var(--u) * 4);
+    border: calc(var(--u) * 1) solid var(--ink);
+  }
+  .card .tag.late { color: var(--stamp); border-color: var(--stamp); }
+
+  .card .req {
+    position: relative;
+    display: flex;
+    gap: calc(var(--u) * 6);
+    margin-top: calc(var(--u) * 10);
+  }
+  .card .req .k {
+    flex: none;
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 18);
+    color: var(--ink-dim);
+  }
+  .card .req p { margin: 0; font-size: calc(var(--u) * 12); line-height: calc(var(--u) * 18); }
+  .card .req .src { color: var(--ink-dim); }
+
+  .card .foot {
+    position: absolute;
+    left: calc(var(--u) * 10);
+    bottom: calc(var(--u) * 8);
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 16);
+    color: var(--ink-dim);
+  }
+
+  /* 竖版卡：两个写口上下摞，跳过在最后一行 */
+  .card .acts {
+    position: absolute;
+    left: calc(var(--u) * 10);
+    right: calc(var(--u) * 10);
+    bottom: calc(var(--u) * 28);
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--u) * 6);
+  }
+  .card .btn {
+    font: inherit;
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 18);
+    height: calc(var(--u) * 20);
+    border: calc(var(--u) * 1) solid var(--ink);
+    cursor: pointer;
+    background: none;
+    color: var(--ink);
+    width: 100%;
+  }
+  .card .btn.solid { background: var(--ink); color: var(--paper); }
+  .card .btn.solid:hover { background: #3a3227; }
+  .card .btn.ghost:hover { background: rgba(34, 29, 22, .08); }
+  .card .skip {
+    font: inherit;
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 16);
+    border: 0;
+    background: none;
+    color: var(--ink-dim);
+    cursor: pointer;
+    padding: 0;
+    width: 100%;
+  }
+  .card .skip:hover { color: var(--ink); }
+
+  .card.blank { display: grid; place-content: center; }
+  .card.blank .ttl { text-align: center; }
+  .card .note {
+    position: absolute;
+    left: calc(var(--u) * 12);
+    right: calc(var(--u) * 12);
+    top: calc(var(--u) * 96);
+    background: #f3ecd8;
+    border: calc(var(--u) * 1) solid #14110c;
+    box-shadow: calc(var(--u) * 4) calc(var(--u) * 4) 0 rgba(0, 0, 0, .45);
+    padding: calc(var(--u) * 8);
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 18);
+    transform: rotate(-2deg);
+  }
+  .card .note .retry {
+    margin-top: calc(var(--u) * 6);
+    font: inherit;
+    font-size: calc(var(--u) * 12);
+    border: calc(var(--u) * 1) solid var(--ink);
+    background: none;
+    color: var(--ink);
+    padding: 0 calc(var(--u) * 8);
+    line-height: calc(var(--u) * 20);
+    cursor: pointer;
+  }
+
+  .stamp {
+    position: absolute;
+    right: calc(var(--u) * 22);
+    top: calc(var(--u) * 102);
+    border: calc(var(--u) * 2) solid var(--stamp);
+    color: var(--stamp);
+    font-size: calc(var(--u) * 24);
+    line-height: calc(var(--u) * 28);
+    padding: 0 calc(var(--u) * 8);
+    transform: rotate(-9deg);
+    opacity: 0;
+    transition: opacity .1s linear;
+    pointer-events: none;
+  }
+  .stamp.on { opacity: .92; }
+
+  /* ── 桌左：小电子屏（时限 / 耗时 / 装不装得下） ─────────── */
+
+  .screen {
+    background: #101319;
+    border: calc(var(--u) * 1) solid #3b4250;
+    box-shadow:
+      inset 0 calc(var(--u) * 2) 0 rgba(255, 255, 255, .05),
+      calc(var(--u) * 4) calc(var(--u) * 4) 0 rgba(0, 0, 0, .45);
+    color: #e6c98c;
+    padding: calc(var(--u) * 8);
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--u) * 2);
+  }
+  .screen .ln {
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 16);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+  .screen .ln.date { color: #9aa2b2; }
+  .screen .ln.bad { color: #e08c74; }
+
+  /* ── 卡夹：「接下来」 ──────────────────────────────────── */
+
+  .holder {
+    background: #17130e;
+    border: calc(var(--u) * 1) solid #3a3226;
+    box-shadow: inset 0 calc(var(--u) * 2) 0 rgba(255, 255, 255, .04);
+    padding: calc(var(--u) * 6);
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--u) * 4);
+  }
+  .holder .slot {
+    flex: 1;
+    background: var(--paper);
+    color: var(--ink);
+    border: calc(var(--u) * 1) solid #14110c;
+    padding: calc(var(--u) * 2) calc(var(--u) * 5);
+    overflow: hidden;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .holder .slot:hover { background: #f4ecd8; }
+  .holder .slot .nm {
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 14);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .holder .slot .tm {
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 12);
+    color: var(--ink-dim);
+  }
+  .holder .slot.late .tm { color: var(--stamp); }
+  .holder .empty {
+    flex: 1;
+    display: grid;
+    place-items: center;
+    font-size: calc(var(--u) * 12);
+    color: #6a6154;
+  }
+
+  /* ── 便签叠：今日日清 ──────────────────────────────────── */
+
+  .notes {
+    background: #e4dbc4;
+    color: var(--ink);
+    border: calc(var(--u) * 1) solid #14110c;
+    box-shadow:
+      calc(var(--u) * 4) calc(var(--u) * 3) 0 #cfc5ac,
+      calc(var(--u) * 8) calc(var(--u) * 6) 0 #b9af96;
+    padding: calc(var(--u) * 7);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--u) * 3);
+  }
+  .notes .hd { font-size: calc(var(--u) * 12); line-height: calc(var(--u) * 16); }
+  .notes .nm { font-size: calc(var(--u) * 12); line-height: calc(var(--u) * 14); color: var(--ink-dim); }
+  .notes .fine { display: none; }
+  .notes.open .fine { display: block; }
+  .notes.open .nm { display: none; }
+
+  .notes .fine p {
+    margin: 0 0 calc(var(--u) * 4);
+    width: calc(var(--u) * 210);
+    background: #f3ecd8;
+    border: calc(var(--u) * 1) solid #14110c;
+    box-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 rgba(0, 0, 0, .45);
+    padding: calc(var(--u) * 6);
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 16);
+    color: var(--ink-dim);
+  }
+
+  /* ── 等回复的红标签（等待清单：到期没回） ───────────────── */
+
+  .remind {
+    background: #b4462f;
+    border: calc(var(--u) * 1) solid #6d2a20;
+    color: #f6ecd9;
+    font-family: inherit;
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 18);
+    text-align: center;
+    cursor: help;
+    padding: 0;
+    box-shadow: calc(var(--u) * 3) calc(var(--u) * 3) 0 rgba(0, 0, 0, .45);
+  }
+
+  /* ── 桌沿标牌 / 抽屉把手 / 开关 ─────────────────────────── */
+
+  .plaque {
+    background: #1f232c;
+    border: calc(var(--u) * 1) solid #3a3f4c;
+    color: #b9b0a0;
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 18);
+    text-align: center;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+  }
+  .plaque[aria-pressed="true"] { background: #333946; color: #f2e9d6; }
+
+  .drawer {
+    background: #241d15;
+    border: calc(var(--u) * 1) solid #4a3f2e;
+    cursor: pointer;
+    color: #9a8f7c;
+    font-family: inherit;
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 18);
+    padding: 0;
+  }
+  .drawer:hover { background: #2e2519; color: #cfc3ad; }
+
+  .power {
+    background: #1b1f27;
+    border: calc(var(--u) * 1) solid #3a3f4c;
+    color: #b9b0a0;
+    font-family: inherit;
+    font-size: calc(var(--u) * 12);
+    line-height: calc(var(--u) * 18);
+    cursor: pointer;
+  }
+  .power:hover { background: #262b35; color: #f2e9d6; }
+
+  /* ── 抽屉拉开后的占位层 ─────────────────────────────────── */
+
+  .drawer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    place-items: center;
+    background: rgba(5, 6, 9, .72);
+  }
+  .drawer-overlay.on { display: grid; }
+  .drawer-overlay .sheet {
+    max-width: 520px;
+    border: 1px solid #3a3f4c;
+    background: #14171e;
+    padding: 18px 22px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: #b9b0a0;
+  }
+  .drawer-overlay b { color: #efe6d2; font-weight: 400; }
+
+  /* ── 提示条 ─────────────────────────────────────────────── */
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 42px;
+    transform: translateX(-50%);
+    background: #1b1f27;
+    border: 1px solid #3a3f4c;
+    color: #d8cfbc;
+    font-size: 13px;
+    padding: 6px 12px;
+    opacity: 0;
+    transition: opacity .18s linear;
+    pointer-events: none;
+    z-index: 60;
+  }
+  .toast.on { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="probe">
+  <b>原型控制（不属于场景）</b>
+  <button data-mode="card" aria-pressed="true">有卡</button>
+  <button data-mode="empty" aria-pressed="false">空态</button>
+  <button data-mode="fail" aria-pressed="false">取数失败</button>
+  <span>← → 换卡</span>
+</div>
+
+<main class="stage">
+  <div class="world" id="world">
+    <canvas id="bg" width="600" height="420"></canvas>
+
+    <!-- 桌左：小电子屏（预计耗时 / 装不装得下 / 今天还剩多少可排时间） -->
+    <div class="abs screen" id="screen" style="--x:24;--y:250;--w:150;--h:84"></div>
+
+    <!-- 卡夹：「接下来」 -->
+    <div class="abs holder" id="holder" style="--x:415;--y:152;--w:175;--h:120"></div>
+
+    <!-- 便签叠：今日日清，压在卡夹下方 -->
+    <div class="abs notes" id="notes" style="--x:415;--y:282;--w:170;--h:70">
+      <div class="hd">日清 6/6 未还</div>
+      <div class="nm">点开看参数</div>
+      <div class="fine">
+        <p>容量参数定于 2026-11-05</p>
+        <p>窗口外日清 120 分钟不占可排时间</p>
+      </div>
+    </div>
+
+    <!-- 等回复：等待清单「到期没回」 -->
+    <button class="abs remind" id="remind" style="--x:502;--y:358;--w:48;--h:20" title="等待清单：到期没回，2 条">等回 2</button>
+
+    <!-- 竖版行动卡 -->
+    <article class="card" id="card"></article>
+
+    <!-- 桌沿标牌 -->
+    <button class="abs plaque" id="sign-focus" style="--x:18;--y:394;--w:84;--h:20" aria-pressed="true">焦点视图</button>
+    <button class="abs plaque" id="sign-canvas" style="--x:108;--y:394;--w:94;--h:20" aria-pressed="false">六箱画布</button>
+
+    <!-- 抽屉把手：六箱入口 -->
+    <button class="abs drawer" id="drawer" style="--x:250;--y:394;--w:100;--h:20" title="拉开抽屉：六箱画布">六箱全景</button>
+
+    <!-- 刷新开关 -->
+    <button class="abs power" id="power" style="--x:532;--y:392;--w:50;--h:22">刷新</button>
+  </div>
+</main>
+
+<div class="drawer-overlay" id="overlay">
+  <div class="sheet">
+    <b>抽屉拉开：六箱画布</b><br>
+    这里是 v1 的六箱画布原样——纸箱、便贴、箱签、已沉底、规则角标，一个都不改。<br><br>
+    本原型只做焦点视图这一块，抽屉里是占位说明，不是画布本身。
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<footer>一次性假数据原型 · 只回答观感 · 不写任何数据 · 字体 Fusion Pixel 12px（OFL）</footer>
+
+<script>
+(() => {
+  'use strict';
+
+  const ART_W = 600;
+  const ART_H = 420;
+  const world = document.getElementById('world');
+  const bg = document.getElementById('bg');
+  const ctx = bg.getContext('2d');
+
+  /* ── 场景：竖版卡立在桌面上，台灯从左上打光 ────────────── */
+
+  function rect(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, w, h);
+  }
+
+  /** 一条水平光带；阶梯条带凑成一束像素光，而不是一片渐变。 */
+  function band(x, y, w, h, alpha) {
+    ctx.fillStyle = 'rgba(255, 214, 150, ' + alpha + ')';
+    ctx.fillRect(Math.round(x), y, Math.round(w), h);
+  }
+
+  function drawScene() {
+    ctx.clearRect(0, 0, ART_W, ART_H);
+
+    // 暗房间的墙：只留上面三分之一
+    rect(0, 0, ART_W, 140, '#0f1118');
+    rect(0, 40, ART_W, 100, '#12151d');
+
+    // 熄屏的显示器（只作剪影，不发光；卡挡掉它左边一截）
+    rect(330, 34, 270, 106, '#1d212a');
+    rect(336, 40, 258, 90, '#0a0c11');
+    rect(430, 140, 52, 10, '#1d212a');
+
+    // 桌面：占画面下部约三分之二
+    rect(0, 140, ART_W, 250, '#2a2318');
+    rect(0, 140, ART_W, 5, '#332a1c');
+
+    // 台灯的光：从灯罩口向桌面散开，越往下越宽
+    for (let y = 94; y < 390; y += 8) {
+      const t = (y - 94) / 296;
+      const half = 34 + t * 172;
+      const cx = 139 + t * 160;
+      band(cx - half, y, half * 2, 8, 0.05);
+    }
+    // 灯下的光池
+    for (let y = 240; y < 392; y += 8) {
+      band(150, y, 340, 8, 0.035);
+    }
+
+    // 台灯：底座在桌面后沿，灯臂斜着往上，灯罩朝下
+    rect(26, 138, 76, 18, '#20242d');
+    rect(26, 138, 76, 4, '#39404e');
+    rect(58, 100, 10, 40, '#262b35');
+    rect(66, 94, 14, 8, '#262b35');
+    rect(78, 88, 14, 8, '#2a3040');
+    rect(90, 82, 14, 8, '#2a3040');
+    rect(102, 76, 14, 8, '#262b35');
+    rect(114, 70, 14, 8, '#262b35');
+    // 灯罩：向下张开的锥形，罩口有一圈暖色
+    rect(126, 58, 26, 7, '#2a3040');
+    rect(120, 65, 38, 7, '#262b35');
+    rect(114, 72, 50, 7, '#2a3040');
+    rect(108, 79, 62, 9, '#262b35');
+    rect(112, 87, 54, 5, '#e8b46a');
+    rect(118, 91, 42, 4, '#ffd9a0');
+
+    // 杯子 / 笔筒：桌面靠近台灯这一侧
+    rect(112, 150, 32, 42, '#2b303a');
+    rect(112, 150, 32, 4, '#3d4453');
+    rect(144, 160, 7, 16, '#2b303a');
+    rect(146, 163, 3, 10, '#10131a');
+
+    rect(152, 146, 28, 46, '#242932');
+    rect(152, 146, 28, 3, '#39404e');
+    rect(156, 130, 3, 18, '#8a6f45');
+    rect(162, 126, 3, 22, '#b8b0a0');
+    rect(168, 132, 3, 16, '#7a4a3f');
+
+    // 卡立在桌上：底部阴影
+    rect(204, 368, 212, 12, 'rgba(0,0,0,.42)');
+    rect(210, 380, 198, 5, 'rgba(0,0,0,.22)');
+
+    // 桌沿
+    rect(0, 390, ART_W, 30, '#1b1710');
+    rect(0, 390, ART_W, 4, '#3b3024');
+  }
+
+  drawScene();
+
+  /* ── 虚构数据（全是编的） ────────────────────────────────── */
+
+  const DECK = [
+    {
+      title: '季度合规自查表·汇总页（一页纸）',
+      due: '今天 17:00', late: true,
+      req: '一页纸能直接上会：写清哪几条要改、谁负责。',
+      est: '40 分钟', fit: '装不下', avail: '0 分钟',
+      project: '项目 ④ 季度自查'
+    },
+    {
+      title: '供应商名录更新（第二轮）',
+      due: '今天 16:50', late: false,
+      req: '把新增三家补进名录，标清联系人与合作起止。',
+      est: '25 分钟', fit: '装得下', avail: '40 分钟',
+      project: '项目 ② 供应商台账'
+    },
+    {
+      title: '合同模板页眉核对',
+      due: '今天 18:00', late: false,
+      req: '版本号、生效日、签章位三处对齐即可。',
+      est: '15 分钟', fit: '装得下', avail: '40 分钟',
+      project: '项目 ① 合同模板'
+    },
+    {
+      title: '部门周会材料（三页）',
+      due: '明天 10:00', late: false,
+      req: '三页：本周交付、卡点、下周要谁配合。',
+      est: '50 分钟', fit: '明天再说', avail: '0 分钟',
+      project: '项目 ⑥ 例会'
+    },
+    {
+      title: '往来函件归档（9 月）',
+      due: '本周五', late: false,
+      req: '按收文号归档，缺号记一张清单。',
+      est: '35 分钟', fit: '装得下', avail: '40 分钟',
+      project: '项目 ③ 案卷'
+    }
+  ];
+
+  let index = 0;
+  let mode = 'card';
+
+  /* ── 渲染 ──────────────────────────────────────────────── */
+
+  const cardEl = document.getElementById('card');
+  const holderEl = document.getElementById('holder');
+  const screenEl = document.getElementById('screen');
+
+  function cardMarkup(c) {
+    return '' +
+      '<h1 class="ttl">' + c.title + '</h1>' +
+      '<div class="tag' + (c.late ? ' late' : '') + '">' + c.due + (c.late ? ' · 已逾期' : '') + '</div>' +
+      '<div class="req"><span class="k">要求</span><p>' + c.req + '<span class="src"> · 来自记录页</span></p></div>' +
+      '<div class="foot">' + c.project + '</div>' +
+      '<div class="acts">' +
+        '<button class="btn solid" data-act="complete">完成</button>' +
+        '<button class="btn ghost" data-act="reschedule">改期</button>' +
+        '<button class="skip" data-act="skip">跳过</button>' +
+      '</div>';
+  }
+
+  function renderCard() {
+    cardEl.className = 'card';
+    cardEl.innerHTML = '';
+
+    if (mode === 'empty') {
+      cardEl.classList.add('blank');
+      cardEl.innerHTML = '<h1 class="ttl">现在没有该做的事</h1>';
+      cardEl.dataset.noteRef = '';
+      return;
+    }
+
+    const c = DECK[index % DECK.length];
+    cardEl.dataset.noteRef = String(index);
+
+    if (mode === 'fail') {
+      cardEl.innerHTML = '<h1 class="ttl">' + c.title + '</h1>' +
+        '<div class="note"><b>取数失败</b><br>读不到滴答数据，卡上与小屏上的信息都是上一次的。' +
+        '<br><button class="retry" data-act="retry">重试</button></div>';
+      return;
+    }
+
+    cardEl.innerHTML = cardMarkup(c);
+  }
+
+  /** 桌左小屏：这张卡的时限 / 耗时 / 装不装得下 / 今天还剩多少可排时间。 */
+  function renderScreen() {
+    if (mode === 'empty') {
+      screenEl.innerHTML = '<div class="ln date">11-08 周六</div><div class="ln">桌上是空的</div>';
+      return;
+    }
+    const c = DECK[index % DECK.length];
+    screenEl.innerHTML =
+      '<div class="ln date">11-08 周六</div>' +
+      '<div class="ln">预计 ' + c.est + '</div>' +
+      '<div class="ln' + (c.fit === '装不下' ? ' bad' : '') + '">' + c.fit + '</div>' +
+      '<div class="ln">可排 ' + c.avail + '</div>';
+  }
+
+  function renderHolder() {
+    const rest = [];
+    for (let i = 1; i <= 4 && i < DECK.length; i += 1) {
+      rest.push(DECK[(index + i) % DECK.length]);
+    }
+    if (mode === 'empty') {
+      holderEl.innerHTML = '<div class="empty">卡夹空着</div>';
+      return;
+    }
+    holderEl.innerHTML = rest.map((c, i) => (
+      '<div class="slot' + (c.late ? ' late' : '') + '" data-jump="' + (i + 1) + '">' +
+        '<div class="nm">' + c.title + '</div>' +
+        '<div class="tm">' + c.due + '</div>' +
+      '</div>'
+    )).join('');
+  }
+
+  function renderAll() {
+    renderCard();
+    renderScreen();
+    renderHolder();
+  }
+
+  /* ── 交互 ──────────────────────────────────────────────── */
+
+  function toast(text) {
+    const el = document.getElementById('toast');
+    el.textContent = text;
+    el.classList.add('on');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => el.classList.remove('on'), 1800);
+  }
+
+  function swapTo(n) {
+    index = (index + n + DECK.length) % DECK.length;
+    renderAll();
+  }
+
+  function stampThen(kind) {
+    if (mode !== 'card') return;
+    const stamp = document.createElement('div');
+    stamp.className = 'stamp';
+    stamp.textContent = kind === 'complete' ? '完成' : '改期';
+    cardEl.appendChild(stamp);
+    requestAnimationFrame(() => stamp.classList.add('on'));
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) {
+      swapTo(1);
+      return;
+    }
+    cardEl.classList.add('leaving');
+    setTimeout(() => {
+      cardEl.classList.remove('leaving');
+      swapTo(1);
+    }, 240);
+  }
+
+  cardEl.addEventListener('click', (event) => {
+    const act = event.target.closest('[data-act]');
+    if (!act) return;
+    const kind = act.dataset.act;
+    if (kind === 'complete' || kind === 'reschedule') {
+      stampThen(kind);
+      return;
+    }
+    if (kind === 'skip') {
+      swapTo(1);
+      toast('原型占位：跳过＝把卡插回卡夹末尾，零写入');
+      return;
+    }
+    if (kind === 'retry') {
+      toast('原型占位：重试会重新取数');
+    }
+  });
+
+  holderEl.addEventListener('click', (event) => {
+    const slot = event.target.closest('[data-jump]');
+    if (!slot) return;
+    swapTo(Number(slot.dataset.jump));
+    toast('原型占位：抽出来换主卡，零写入');
+  });
+
+  document.getElementById('notes').addEventListener('click', (event) => {
+    event.currentTarget.classList.toggle('open');
+  });
+
+  document.getElementById('remind').addEventListener('click', () => {
+    toast('等待清单里到期没回的那几条：等谁、等什么、什么时候回');
+  });
+
+  document.getElementById('power').addEventListener('click', () => {
+    toast('原型占位：刷新会重新取数');
+  });
+
+  const overlay = document.getElementById('overlay');
+  const openDrawer = () => overlay.classList.add('on');
+  overlay.addEventListener('click', () => overlay.classList.remove('on'));
+  document.getElementById('drawer').addEventListener('click', openDrawer);
+  document.getElementById('sign-canvas').addEventListener('click', openDrawer);
+  document.getElementById('sign-focus').addEventListener('click', () => overlay.classList.remove('on'));
+
+  document.querySelector('.probe').addEventListener('click', (event) => {
+    const btn = event.target.closest('button');
+    if (!btn || !btn.dataset.mode) return;
+    mode = btn.dataset.mode;
+    document.querySelectorAll('[data-mode]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.mode === mode));
+    });
+    renderAll();
+  });
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowRight') swapTo(1);
+    if (event.key === 'ArrowLeft') swapTo(-1);
+  });
+
+  /* ── 像素网格：一个美术像素 = 整数个设备像素 ───────────────
+   * 先试着取 3 倍、2 倍；窗口太小时才退到非整数（那会糊，原型里只作兜底）。
+   */
+
+  function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    const availW = window.innerWidth - 24;
+    const availH = window.innerHeight - 64;
+    let k = 0;
+    for (let candidate = 3; candidate >= 2; candidate -= 1) {
+      if (ART_W * candidate / dpr <= availW && ART_H * candidate / dpr <= availH) {
+        k = candidate;
+        break;
+      }
+    }
+    if (!k) {
+      k = Math.max(1, Math.min(availW * dpr / ART_W, availH * dpr / ART_H));
+    }
+    const u = k / dpr;
+    world.style.setProperty('--u', u + 'px');
+    world.style.width = (ART_W * u) + 'px';
+    world.style.height = (ART_H * u) + 'px';
+  }
+
+  window.addEventListener('resize', fit);
+
+  fit();
+  renderAll();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { fit(); renderAll(); });
+  }
+})();
+</script>
+</body>
+</html>
