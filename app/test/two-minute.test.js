@@ -332,9 +332,9 @@ test('两分钟卡：它不进「接下来」——两分钟卡是要直接做�
   );
 });
 
-test('两分钟卡：顶到主卡位时，逾期的动作仍然是「接下来」的第一条', () => {
-  // 两分钟规则不是时段偏好，是一条资格例外：它顶主卡位。
-  // 被挤下去的逾期动作不会消失——它按排序进「接下来」的第一位。
+test('两分钟卡：有逾期动作时让位——逾期优先（用户 2026-11-08 裁定）', () => {
+  // 破掉的外部时间点不可逆：有「逾期或今天到期」的动作时，主卡是那条动作，
+  // 两分钟卡不占主卡。它也不会消失——它不进队列，留在收集箱里等下一个日回顾窗口。
   const containers = [
     container('inbox', [capture()]),
     container('execution', [
@@ -342,11 +342,26 @@ test('两分钟卡：顶到主卡位时，逾期的动作仍然是「接下来�
     ]),
   ];
   const guide = focusGuideOf(containers, context());
+  assert.equal(guide.card.id, '逾期');
+  assert.equal(guide.card.twoMinute, false);
+  // 两分钟卡既没占主卡，也不在队列里（它留在收集箱）。
+  assert.deepEqual(
+    guide.next.map((item) => item.id),
+    [],
+  );
+});
+
+test('两分钟卡：没有逾期动作时照旧顶到主卡位（今天到期不算逾期）', () => {
+  const containers = [
+    container('inbox', [capture()]),
+    container('execution', [action({ id: '普通' })]),
+  ];
+  const guide = focusGuideOf(containers, context());
   assert.equal(guide.card.id, '捕获');
   assert.equal(guide.card.twoMinute, true);
   assert.deepEqual(
     guide.next.map((item) => item.id),
-    ['逾期'],
+    ['普通'],
   );
 });
 

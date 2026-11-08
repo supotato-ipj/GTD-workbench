@@ -675,7 +675,7 @@ export function focusGuideOf(containers, context) {
     kept.push(note);
   }
 
-  // 两分钟卡：**直接顶到主卡位**——它是要做掉的，不是排队等的。
+  // 两分钟卡：**顶到主卡位**——它是要做掉的，不是排队等的。
   // 好几条都够两分钟时，按同一套排序取第一条（到期早的、id 小的先）。
   const twoMinuteRanked = rankOf(
     twoMinuteEntries.map((entry) => entry.note),
@@ -687,10 +687,13 @@ export function focusGuideOf(containers, context) {
   const normalCard = pickCard(kept, ctx2);
   // 两分钟卡顶到主卡位：规则允许时，它就是现在该做的那一件。
   //
-  // **不受「逾期优先」影响**：那一条例外说的是「不受**时段偏好**影响」，
-  // 而两分钟规则不是时段偏好，是一条**资格例外**（GTD 的两分钟规则：当场做掉、别判定）。
-  // 真的被它挤下去的逾期动作不会消失——它按排序进「接下来」的第一位。
-  const cardNote = twoMinuteNote === null ? normalCard : twoMinuteNote;
+  // **但逾期优先**（用户 2026-11-08 裁定）：候选里只要有**逾期**的动作，
+  // 两分钟卡就不占主卡——破掉的外部时间点不可逆。
+  // 注意只认「逾期」：「今天到期」的任务并没有被破掉，它照常按排序与时段参与竞争；
+  // 若连「今天到期」也让位，这条规则就几乎永远不生效。
+  // 它不会因此丢掉：两分钟卡**不进「接下来」队列**，所以它留在收集箱里等下一个日回顾窗口。
+  const overduePresent = kept.some((note) => note.overdue === true);
+  const cardNote = twoMinuteNote === null || overduePresent ? normalCard : twoMinuteNote;
   const cardEntry = cardNote === null ? null : byId.get(cardNote.id) ?? null;
 
   // 「接下来」：到了时段的日清项在前（当天必须还清），其余按排序，最多四条。

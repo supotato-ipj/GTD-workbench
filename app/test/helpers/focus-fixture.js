@@ -35,6 +35,25 @@ export const TWO_MINUTE_POLICY = {
 /** 落在日回顾窗口（14:45–15:00）内的时刻：本地 2026-11-05 14:50。 */
 export const IN_REVIEW_WINDOW = '2026-11-05T06:50:00.000Z';
 
+/** 夹具里那条**逾期**动作的 id（两分钟规则让位给它，见 ADR-0010 的修订节）。 */
+const OVERDUE_TASK_ID = '7c4e0000000000000000000a';
+
+/**
+ * 把夹具里那条逾期动作挪到未来，让「两分钟卡顶主卡位」这类用例有个干净的前提。
+ *
+ * 逾期优先（用户 2026-11-08 裁定）：只要有逾期动作，两分钟卡就不占主卡。
+ * 「两分钟卡顶主卡位」这条用例要单独测，所以先把逾期那条挪走。
+ * @param {object[]} tasks - 原始任务。
+ * @returns {object[]} 调整后的任务。
+ */
+export function withoutOverdue(tasks) {
+  return tasks.map((task) =>
+    task.id === OVERDUE_TASK_ID
+      ? { ...task, dueDate: '2026-11-06T06:15:00.000+0000' }
+      : task,
+  );
+}
+
 /**
  * 用固定夹具生成一份快照（走真的路由，字段与 Host 侧一致）。
  * @returns {Promise<object>} 快照。
@@ -95,10 +114,12 @@ export async function twoMinuteSnapshotUnderTest({
   status = 0,
   now = IN_REVIEW_WINDOW,
 } = {}) {
-  const tasks = rawTasks.map((task) =>
-    task.id === TWO_MINUTE_CAPTURE_ID
-      ? { ...task, status, focusSummaries: { estimatedDuration: estimateSeconds } }
-      : task,
+  const tasks = withoutOverdue(
+    rawTasks.map((task) =>
+      task.id === TWO_MINUTE_CAPTURE_ID
+        ? { ...task, status, focusSummaries: { estimatedDuration: estimateSeconds } }
+        : task,
+    ),
   );
   const handler = createTasksHandler({
     connection: { requestRejection: () => undefined },

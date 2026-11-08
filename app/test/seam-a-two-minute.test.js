@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 import { DEFAULT_CAPACITY_CONFIG } from '../lib/capacity.js';
 import { TASKS_ROUTE_PATH, createTasksHandler } from '../lib/route.js';
+import { withoutOverdue } from './helpers/focus-fixture.js';
 import { withRoute } from './helpers/http-harness.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -50,14 +51,17 @@ const POLICY = {
  * @returns {object[]} 原始任务。
  */
 function tasksWith({ estimateSeconds = 120, status = 0 } = {}) {
-  return rawTasks.map((task) =>
-    task.id === CAPTURE_ID
-      ? {
-          ...task,
-          status,
-          focusSummaries: { estimatedDuration: estimateSeconds },
-        }
-      : task,
+  // 「两分钟卡顶主卡位」这条用例要一个**没有逾期动作**的前提（逾期优先，见 ADR-0010 修订节）。
+  return withoutOverdue(
+    rawTasks.map((task) =>
+      task.id === CAPTURE_ID
+        ? {
+            ...task,
+            status,
+            focusSummaries: { estimatedDuration: estimateSeconds },
+          }
+        : task,
+    ),
   );
 }
 
