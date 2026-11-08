@@ -108,6 +108,18 @@ window.__ModuleLoader__.load({
       focusCompleteLabel: '完成',
       focusCompletePending: '完成中…',
       focusCompleteRefreshFailed: '已完成，但刷新失败',
+      /* v2:write 改期写口（issue #10）：改期 = 写新的完成时限，粒度到天。 */
+      focusRescheduleLabel: '改期',
+      focusReschedulePending: '改期中…',
+      focusRescheduleDateLabel: '改到',
+      focusRescheduleSubmit: '确认改期',
+      focusRescheduleCancel: '取消',
+      focusRescheduleNeedDate: '先选一个完成时限',
+      focusRescheduleRefreshFailed: '已改期，但刷新失败',
+      /* v2:write 跳过（issue #10）：零写入的纯视图状态。 */
+      focusSkipLabel: '跳过',
+      focusSkipNote: '零写入',
+      focusSkipNotice: '已跳过：本次会话里它不再出现在焦点里，刷新页面会回来',
       focusDrillEntry: '打开六箱全景',
       focusDrillTitle: '六箱全景',
       focusBackLabel: '回到焦点',
@@ -209,6 +221,16 @@ window.__ModuleLoader__.load({
       focusCompleteLabel: 'Done',
       focusCompletePending: 'Completing…',
       focusCompleteRefreshFailed: 'Completed, but refreshing failed',
+      focusRescheduleLabel: 'Reschedule',
+      focusReschedulePending: 'Rescheduling…',
+      focusRescheduleDateLabel: 'Reschedule to',
+      focusRescheduleSubmit: 'Confirm reschedule',
+      focusRescheduleCancel: 'Cancel',
+      focusRescheduleNeedDate: 'Pick a due date first',
+      focusRescheduleRefreshFailed: 'Rescheduled, but refreshing failed',
+      focusSkipLabel: 'Skip',
+      focusSkipNote: 'no writes',
+      focusSkipNotice: 'Skipped: it stays out of focus for this session and comes back after a reload',
       focusDrillEntry: 'Open the six-box panorama',
       focusDrillTitle: 'Six-box panorama',
       focusBackLabel: 'Back to focus',
@@ -2444,11 +2466,74 @@ window.__ModuleLoader__.load({
               );
             })();
 
-      /* v2:write 完成写口（issue #9）：完成 = 滴答勾选，单口径。
+      /* v2:write 写口（issue #9/#10）：完成 = 滴答勾选，改期 = 写新的完成时限。
          写口的状态（等待／失败／写成了但刷新失败）住在外壳里，这里只把它画出来。 */
       const write = props.write !== null && typeof props.write === 'object' ? props.write : null;
       const mine = write !== null && write.taskId === card.id ? write : null;
       const pending = mine !== null && mine.status === 'pending';
+      /* 两个写口各自显示自己的等待态；但同一次写只允许一个在飞——连点不许写两次。 */
+      const isRescheduleWrite = mine !== null && mine.action === 'reschedule';
+      const pendingComplete = pending && !isRescheduleWrite;
+      const pendingReschedule = pending && isRescheduleWrite;
+
+      /* v2:write 改期：日期编辑器开合是**视图内状态**（点开、取消都不写任何东西）。 */
+      const [rescheduleOpen, setRescheduleOpen] = React.useState(false);
+      const [needDate, setNeedDate] = React.useState(false);
+      const dateInputRef = React.useRef(null);
+      /* 初值：这条动作当前的完成时限（粒度到天）。没有期限就是空的——不替用户猜一个日子。 */
+      const initialDueDate =
+        typeof card.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(card.dueDate) ? card.dueDate : '';
+      /* 日期输入是**不受 React 管**的：值在提交那一刻从 DOM 上读，
+         所以它永远是 `YYYY-MM-DD`（`<input type="date">` 的值形状），不会带上时刻。 */
+      /* 写有结果了就收摊：改期写成了（哪怕刷新没成）就把编辑器收起来，
+         别让用户以为还没改；写失败则留着编辑器与那个日子，好让他改一改再试。
+         只认「改期」那一次写：完成写口的结果不该动改期编辑器。 */
+      const lastWriteRef = React.useRef(null);
+      React.useEffect(() => {
+        const previous = lastWriteRef.current;
+        lastWriteRef.current = mine;
+        if (previous === null || previous.action !== 'reschedule' || previous.status !== 'pending') return;
+        if (mine === null || mine.status === 'refresh-failed') {
+          setRescheduleOpen(false);
+          setNeedDate(false);
+        }
+      }, [mine]);
+
+      /**
+       * 从卡上取这条动作的 id（焦点视图用 `data-note-ref` 指回那条动作）。
+       * @param {object} event - 事件。
+       * @returns {string | null} 动作 id；取不到时为 null。
+       */
+      const taskIdOf = (event) => {
+        const host =
+          event.currentTarget !== null && typeof event.currentTarget.closest === 'function'
+            ? event.currentTarget.closest('[data-role="focus-card"]')
+            : null;
+        const taskId = host === null ? null : host.getAttribute('data-note-ref');
+        return typeof taskId === 'string' && taskId.length > 0 ? taskId : null;
+      };
+
+      /**
+       * 提交改期：读日期输入上的值，写成「新的完成时限」。
+       *
+       * 值在**提交那一刻**从 DOM 上读：`<input type="date">` 的值形状就是 `YYYY-MM-DD`，
+       * 带时刻的字符串它根本收不下——所以这一条路上发不出 Host 会当场拒掉的参数。
+       * @param {object} event - 事件。
+       * @returns {void} 无。
+       */
+      const submitReschedule = (event) => {
+        const input = dateInputRef.current;
+        const dueDate = input === null ? '' : String(input.value ?? '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+          /* 没有日子（或日子不成立）就不写：先让人挑一个完成时限。 */
+          setNeedDate(true);
+          return;
+        }
+        setNeedDate(false);
+        const taskId = taskIdOf(event);
+        if (taskId === null) return;
+        if (typeof props.onReschedule === 'function') props.onReschedule(taskId, dueDate);
+      };
 
       return h(
         'article',
@@ -2591,7 +2676,9 @@ window.__ModuleLoader__.load({
           ),
         ),
         capacityBlock,
-        /* v2:write 完成写口：事实行之下、卡脚之上。按钮克制——不加新的说明文字块。 */
+        /* v2:write 写口那一行：事实行之下、卡脚之上。按钮克制——不加新的说明文字块。
+           三个控件**位置分开**：完成（实心）与改期（描边）是两个写口，
+           跳过是零写入的弱化项，排在分隔线之后——不与写口合并成一个「推迟」。 */
         h(
           'div',
           {
@@ -2605,31 +2692,27 @@ window.__ModuleLoader__.load({
               flexWrap: 'wrap',
             },
           },
+          /* 完成：实心主按钮。等待期间按钮不许再点：Host 一次完成要跑十几次 CLI 调用。 */
           h(
             'button',
             {
               type: 'button',
               'data-role': 'focus-card-complete',
-              'data-state': pending ? 'pending' : 'idle',
-              /* 等待期间按钮不许再点：Host 一次完成要跑十几次 CLI 调用。 */
+              'data-state': pendingComplete ? 'pending' : 'idle',
               disabled: pending,
-              'aria-busy': pending ? 'true' : 'false',
+              'aria-busy': pendingComplete ? 'true' : 'false',
               onClick: (event) => {
                 /* 目标 id 从卡上的 `data-note-ref` 取（焦点视图不占用 `data-note-id`）。 */
-                const host =
-                  event.currentTarget !== null && typeof event.currentTarget.closest === 'function'
-                    ? event.currentTarget.closest('[data-role="focus-card"]')
-                    : null;
-                const taskId = host === null ? null : host.getAttribute('data-note-ref');
-                if (typeof taskId !== 'string' || taskId.length === 0) return;
+                const taskId = taskIdOf(event);
+                if (taskId === null) return;
                 if (typeof props.onComplete === 'function') props.onComplete(taskId);
               },
               style: {
                 padding: '5px 14px',
-                border: '1px solid var(--dsw-alias-border-l3)',
+                border: '1px solid transparent',
                 borderRadius: 'var(--dsw-radius-md)',
-                background: 'var(--dsw-alias-bg-module-platform)',
-                color: 'var(--dsw-alias-label-primary)',
+                background: 'var(--dsw-alias-button-primary-fill, var(--dsw-alias-label-primary))',
+                color: 'var(--dsw-alias-label-primary-foreground, var(--dsw-alias-bg-base))',
                 font: 'inherit',
                 fontSize: '13px',
                 lineHeight: '20px',
@@ -2638,85 +2721,278 @@ window.__ModuleLoader__.load({
                 opacity: pending ? 0.7 : 1,
               },
             },
-            pending ? t('focusCompletePending') : t('focusCompleteLabel'),
+            pendingComplete ? t('focusCompletePending') : t('focusCompleteLabel'),
           ),
-          mine !== null && mine.status === 'failed'
-            ? h(
-                'p',
-                {
-                  'data-role': 'focus-complete-error',
-                  'data-code': typeof mine.code === 'string' ? mine.code : '',
-                  style: {
-                    margin: 0,
-                    fontSize: '12px',
-                    lineHeight: '18px',
-                    color: 'var(--dsw-alias-label-primary)',
-                  },
+          /* 改期：描边次按钮，与完成分开摆——改期写的是新的完成时限，不是完成。 */
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-role': 'focus-card-reschedule',
+              'data-state': pendingReschedule ? 'pending' : 'idle',
+              'aria-expanded': rescheduleOpen ? 'true' : 'false',
+              disabled: pending,
+              'aria-busy': pendingReschedule ? 'true' : 'false',
+              onClick: (event) => {
+                const taskId = taskIdOf(event);
+                if (taskId === null) return;
+                setNeedDate(false);
+                setRescheduleOpen((open) => !open);
+              },
+              style: {
+                padding: '5px 14px',
+                border: '1px solid var(--dsw-alias-border-l3)',
+                borderRadius: 'var(--dsw-radius-md)',
+                background: 'var(--dsw-alias-bg-module-platform)',
+                color: 'var(--dsw-alias-label-secondary)',
+                font: 'inherit',
+                fontSize: '13px',
+                lineHeight: '20px',
+                cursor: pending ? 'progress' : 'pointer',
+                opacity: pending ? 0.7 : 1,
+              },
+            },
+            pendingReschedule ? t('focusReschedulePending') : t('focusRescheduleLabel'),
+          ),
+          /* 分隔线：把零写入的那一项隔到写口的另一边去。 */
+          h('span', {
+            'data-role': 'focus-card-actions-sep',
+            'aria-hidden': 'true',
+            style: {
+              flex: '1 1 auto',
+              minWidth: '16px',
+              borderTop: '1px dashed var(--dsw-alias-border-l2)',
+            },
+          }),
+          /* 跳过：零写入。点了不发请求、不写任何东西——只是本次会话里不再看见它。 */
+          h(
+            'button',
+            {
+              type: 'button',
+              'data-role': 'focus-card-skip',
+              'data-state': 'idle',
+              onClick: (event) => {
+                const taskId = taskIdOf(event);
+                if (taskId === null) return;
+                if (typeof props.onSkip === 'function') props.onSkip(taskId);
+              },
+              style: {
+                padding: '5px 2px',
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--dsw-alias-label-tertiary)',
+                font: 'inherit',
+                fontSize: '12.5px',
+                lineHeight: '19px',
+                cursor: 'pointer',
+              },
+            },
+            t('focusSkipLabel'),
+          ),
+          h(
+            'span',
+            {
+              'data-role': 'focus-card-skip-note',
+              style: { fontSize: '10.5px', lineHeight: '16px', color: 'var(--dsw-alias-label-caption)' },
+            },
+            t('focusSkipNote'),
+          ),
+        ),
+        /* v2:write 写口的话：失败原因／写成了但刷新失败——说清楚，不让人猜。 */
+        mine !== null && mine.status !== 'pending'
+          ? h(
+              'div',
+              {
+                'data-role': 'focus-card-write-status',
+                style: {
+                  marginTop: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
                 },
-                typeof mine.message === 'string' ? mine.message : '',
-                typeof mine.code === 'string' && mine.code.length > 0
-                  ? h(
-                      'span',
-                      {
-                        'data-role': 'focus-complete-error-code',
-                        style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+              },
+              mine.status === 'failed'
+                ? h(
+                    'p',
+                    {
+                      'data-role': isRescheduleWrite ? 'focus-reschedule-error' : 'focus-complete-error',
+                      'data-code': typeof mine.code === 'string' ? mine.code : '',
+                      style: {
+                        margin: 0,
+                        fontSize: '12px',
+                        lineHeight: '18px',
+                        color: 'var(--dsw-alias-label-primary)',
                       },
-                      `（${mine.code}）`,
-                    )
-                  : null,
-              )
-            : null,
-          mine !== null && mine.status === 'refresh-failed'
-            ? h(
-                'p',
-                {
-                  'data-role': 'focus-complete-refresh-failed',
-                  style: {
-                    margin: 0,
-                    fontSize: '12px',
-                    lineHeight: '18px',
-                    color: 'var(--dsw-alias-label-primary)',
-                  },
+                    },
+                    typeof mine.message === 'string' ? mine.message : '',
+                    typeof mine.code === 'string' && mine.code.length > 0
+                      ? h(
+                          'span',
+                          {
+                            'data-role': isRescheduleWrite ? 'focus-reschedule-error-code' : 'focus-complete-error-code',
+                            style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                          },
+                          `（${mine.code}）`,
+                        )
+                      : null,
+                  )
+                : null,
+              mine.status === 'refresh-failed'
+                ? h(
+                    'p',
+                    {
+                      'data-role': isRescheduleWrite ? 'focus-reschedule-refresh-failed' : 'focus-complete-refresh-failed',
+                      style: {
+                        margin: 0,
+                        fontSize: '12px',
+                        lineHeight: '18px',
+                        color: 'var(--dsw-alias-label-primary)',
+                      },
+                    },
+                    /* 写成功了，只是刷新没成——不能说成写失败（用户会以为没改上而重复点）。 */
+                    isRescheduleWrite ? t('focusRescheduleRefreshFailed') : t('focusCompleteRefreshFailed'),
+                    typeof mine.message === 'string' && mine.message.length > 0
+                      ? h(
+                          'span',
+                          {
+                            'data-role': isRescheduleWrite ? 'focus-reschedule-refresh-detail' : 'focus-complete-refresh-detail',
+                            style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
+                          },
+                          `：${mine.message}`,
+                        )
+                      : null,
+                  )
+                : null,
+              mine.status === 'refresh-failed'
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      'data-role': isRescheduleWrite ? 'focus-reschedule-refresh' : 'focus-complete-refresh',
+                      onClick: () => {
+                        if (typeof props.onRefresh === 'function') props.onRefresh();
+                      },
+                      style: {
+                        padding: '2px 10px',
+                        border: '1px solid var(--dsw-alias-border-l3)',
+                        borderRadius: 'var(--dsw-radius-md)',
+                        background: 'var(--dsw-alias-bg-module-platform)',
+                        color: 'var(--dsw-alias-label-secondary)',
+                        font: 'inherit',
+                        fontSize: '12px',
+                        lineHeight: '19px',
+                        cursor: 'pointer',
+                      },
+                    },
+                    t('refresh'),
+                  )
+                : null,
+            )
+          : null,
+        /* v2:write 改期编辑器：点开才在。开合是**视图内状态**——取消不写任何东西。 */
+        rescheduleOpen
+          ? h(
+              'div',
+              {
+                'data-role': 'focus-card-reschedule-editor',
+                style: {
+                  marginTop: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
                 },
-                /* 写成功了，只是刷新没成——不能说成写失败（用户会以为没勾上而重复点）。 */
-                t('focusCompleteRefreshFailed'),
-                typeof mine.message === 'string' && mine.message.length > 0
-                  ? h(
-                      'span',
-                      {
-                        'data-role': 'focus-complete-refresh-detail',
-                        style: { marginLeft: '6px', fontSize: '11px', color: 'var(--dsw-alias-label-caption)' },
-                      },
-                      `：${mine.message}`,
-                    )
-                  : null,
-              )
-            : null,
-          mine !== null && mine.status === 'refresh-failed'
-            ? h(
+              },
+              h(
+                'span',
+                {
+                  'data-role': 'focus-card-reschedule-date-label',
+                  style: { fontSize: '12px', lineHeight: '19px', color: 'var(--dsw-alias-label-secondary)' },
+                },
+                t('focusRescheduleDateLabel'),
+              ),
+              h('input', {
+                type: 'date',
+                'data-role': 'focus-card-reschedule-date',
+                'aria-label': t('focusRescheduleDateLabel'),
+                ref: dateInputRef,
+                /* 默认值是这条动作当前的完成时限；没有期限就是空的——不替用户猜一个日子。 */
+                defaultValue: initialDueDate,
+                disabled: pendingReschedule,
+                style: {
+                  font: 'inherit',
+                  fontSize: '13px',
+                  lineHeight: '19px',
+                  padding: '3px 6px',
+                  borderRadius: 'var(--dsw-radius-sm)',
+                  border: '1px solid var(--dsw-alias-border-l3)',
+                  background: 'var(--dsw-alias-bg-base)',
+                  color: 'var(--dsw-alias-label-primary)',
+                },
+              }),
+              h(
                 'button',
                 {
                   type: 'button',
-                  'data-role': 'focus-complete-refresh',
-                  onClick: () => {
-                    if (typeof props.onRefresh === 'function') props.onRefresh();
-                  },
+                  'data-role': 'focus-card-reschedule-submit',
+                  disabled: pendingReschedule,
+                  onClick: submitReschedule,
                   style: {
-                    padding: '2px 10px',
+                    padding: '4px 12px',
                     border: '1px solid var(--dsw-alias-border-l3)',
                     borderRadius: 'var(--dsw-radius-md)',
                     background: 'var(--dsw-alias-bg-module-platform)',
-                    color: 'var(--dsw-alias-label-secondary)',
+                    color: 'var(--dsw-alias-label-primary)',
                     font: 'inherit',
-                    fontSize: '12px',
+                    fontSize: '12.5px',
+                    lineHeight: '19px',
+                    fontWeight: 600,
+                    cursor: pendingReschedule ? 'progress' : 'pointer',
+                    opacity: pendingReschedule ? 0.7 : 1,
+                  },
+                },
+                pendingReschedule ? t('focusReschedulePending') : t('focusRescheduleSubmit'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  'data-role': 'focus-card-reschedule-cancel',
+                  onClick: () => {
+                    setRescheduleOpen(false);
+                    setNeedDate(false);
+                  },
+                  style: {
+                    padding: '4px 8px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--dsw-alias-label-tertiary)',
+                    font: 'inherit',
+                    fontSize: '12.5px',
                     lineHeight: '19px',
                     cursor: 'pointer',
                   },
                 },
-                t('refresh'),
-              )
-            : null,
-        ),
+                t('focusRescheduleCancel'),
+              ),
+              needDate
+                ? h(
+                    'p',
+                    {
+                      'data-role': 'focus-reschedule-need-date',
+                      style: {
+                        margin: 0,
+                        fontSize: '12px',
+                        lineHeight: '18px',
+                        color: 'var(--dsw-alias-label-primary)',
+                      },
+                    },
+                    t('focusRescheduleNeedDate'),
+                  )
+                : null,
+            )
+          : null,
       );
     }
 
@@ -2997,8 +3273,32 @@ window.__ModuleLoader__.load({
 
       const baseCard = focus !== null && focus.card !== null && typeof focus.card === 'object' ? focus.card : null;
       const baseNext = focus !== null && Array.isArray(focus.next) ? focus.next : [];
-      const card = override !== null ? override.card : baseCard;
-      const queue = override !== null ? override.queue : baseNext;
+
+      /* v2:write 跳过（issue #10）：本次会话里被跳过的那几条。
+         它是**纯视图状态**——不写任何数据、不落任何本地存储，刷新页面就回来。 */
+      const skipped = Array.isArray(props.skipped) ? props.skipped : [];
+      /**
+       * 这条是不是本次会话里被跳过了。
+       * @param {string} id - 动作 id。
+       * @returns {boolean} 被跳过时为 true。
+       */
+      const isSkipped = (id) => typeof id === 'string' && skipped.includes(id);
+
+      /* 主卡与队列：跳过的那些从焦点里去掉；主卡被跳过就顺延到队列第一条。 */
+      const overrideCard = override !== null ? override.card : null;
+      const sourceQueue = override !== null ? override.queue : baseNext;
+      const pool = sourceQueue.filter((entry) => !isSkipped(entry.id));
+      const fallbackCard = override !== null ? null : baseCard;
+      const wanted =
+        overrideCard !== null && !isSkipped(overrideCard.id)
+          ? overrideCard
+          : fallbackCard !== null && !isSkipped(fallbackCard.id)
+            ? fallbackCard
+            : null;
+      /* 原来就没有主卡时不该凭空造一张：只有「主卡被跳过」才顺延。 */
+      const hadCard = overrideCard !== null || fallbackCard !== null;
+      const card = wanted !== null ? wanted : hadCard && pool.length > 0 ? asFocusCard(pool[0], capacity) : null;
+      const queue = card !== null && pool[0] !== undefined && pool[0].id === card.id ? pool.slice(1) : pool;
 
       /**
        * 点一条窄条：把它换成主卡，原来的主卡回到队列最前面。
@@ -3126,14 +3426,35 @@ window.__ModuleLoader__.load({
                   React.Fragment,
                   null,
                   h(FocusActionCard, {
+                    /* 卡换了人就重挂：改期编辑器是**这条动作**的视图内状态，
+                       不该带着上一条的日子跟到下一条身上去。 */
+                    key: card === null ? 'focus-card-empty' : card.id,
                     card,
                     t,
                     onOpenNote: props.onOpenNote,
-                    /* v2:write 完成写口：状态与回调由外壳给（快照也住在外壳里）。 */
+                    /* v2:write 写口：状态与回调由外壳给（快照也住在外壳里）。 */
                     write: props.write,
                     onComplete: props.onComplete,
+                    onReschedule: props.onReschedule,
+                    onSkip: props.onSkip,
                     onRefresh: props.onReload,
                   }),
+                  /* v2:write 跳过之后说清楚它去哪了：零写入，只在本次会话里。 */
+                  skipped.length > 0
+                    ? h(
+                        'p',
+                        {
+                          'data-role': 'focus-skip-notice',
+                          style: {
+                            margin: 0,
+                            fontSize: '11.5px',
+                            lineHeight: '17px',
+                            color: 'var(--dsw-alias-label-caption)',
+                          },
+                        },
+                        t('focusSkipNotice'),
+                      )
+                    : null,
                   h(FocusNextQueue, { items: queue, t, onPick: pickFromQueue }),
                 ),
             h(
@@ -3248,31 +3569,37 @@ window.__ModuleLoader__.load({
       const [openedNote, setOpenedNote] = React.useState(null);
       const closeDrawer = React.useCallback(() => setOpenedNote(null), []);
       /* gtd:05 end */
-      /* v2:write 完成写口的状态：等待／失败／写成了但刷新失败。
+      /* v2:write 写口的状态：等待／失败／写成了但刷新失败。
          住在外壳里——快照也住在外壳里，写口与快照是同一件事的两头。 */
       const [write, setWrite] = React.useState(null);
       /** 正在飞的那一次写：连点不许再发一次（Host 一次完成要跑十几次 CLI 调用）。 */
       const writingRef = React.useRef(false);
+      /* v2:write 跳过（issue #10）：本次会话里被跳过的那几条。
+         **只活在内存里**——不落 localStorage、不写任何文件，刷新页面它就回来。 */
+      const [skipped, setSkipped] = React.useState([]);
 
       /**
-       * 完成一条动作（滴答勾选，单口径）。
-       *
        * 走工作台自己的 HTTP 契约的写方向：`POST /gtd-workbench/actions`。
+       *
+       * 请求体是「动作类型 + 目标 id + 参数」：键是英文，`params` 里只有这个动作要的东西
+       * （「改期」带新的截止日，「完成」不用）。
        * 写成功了、响应里带着新快照，就**整体替换**面板当前的快照——
-       * 主卡因此自动换成下一件，不必再发一次读请求。
+       * 主卡与「接下来」因此按 Host 排好的样子重排，不必再发一次读请求。
        * @param {string} taskId - 目标动作 id。
-       * @returns {Promise<void>} 完成。
+       * @param {'complete' | 'reschedule'} action - 写动作类型。
+       * @param {object} params - 这个动作的参数。
+       * @returns {Promise<void>} 写完。
        */
-      const completeTask = React.useCallback(async (taskId) => {
+      const runWrite = React.useCallback(async (taskId, action, params) => {
         if (typeof taskId !== 'string' || taskId.length === 0) return;
         if (writingRef.current) return;
         writingRef.current = true;
-        setWrite({ taskId, status: 'pending', message: null, code: null });
+        setWrite({ taskId, action, status: 'pending', message: null, code: null });
         try {
           const response = await fetch(ACTIONS_URL, {
             method: 'POST',
             headers: { 'content-type': 'application/json', accept: 'application/json' },
-            body: JSON.stringify({ action: 'complete', taskId, params: {} }),
+            body: JSON.stringify({ action, taskId, params }),
           });
           const body = await response.json().catch(() => null);
           if (!response.ok || body === null || typeof body !== 'object' || body.error) {
@@ -3287,8 +3614,8 @@ window.__ModuleLoader__.load({
               setState({ status: 'error', snapshot: null, error: described });
               return;
             }
-            /* 写失败不是完成：说清原因，不在本地加「已完成」标记。 */
-            setWrite({ taskId, status: 'failed', message: described.message, code: described.code });
+            /* 写失败不是写成了：说清原因，不在本地改期限、不加「已完成」标记。 */
+            setWrite({ taskId, action, status: 'failed', message: described.message, code: described.code });
             return;
           }
           if (body.snapshot !== null && typeof body.snapshot === 'object') {
@@ -3297,11 +3624,12 @@ window.__ModuleLoader__.load({
             setState({ status: 'ready', snapshot: body.snapshot, error: null });
             return;
           }
-          /* 写成功了，只是刷新没成：说「已完成，但刷新失败」，并给一次手动刷新。 */
+          /* 写成功了，只是刷新没成：说「写成了，但刷新失败」，并给一次手动刷新。 */
           const refresh =
             body.refreshError !== null && typeof body.refreshError === 'object' ? body.refreshError : null;
           setWrite({
             taskId,
+            action,
             status: 'refresh-failed',
             message: refresh === null ? null : refresh.message,
             code: refresh === null ? null : refresh.code,
@@ -3309,6 +3637,7 @@ window.__ModuleLoader__.load({
         } catch (error) {
           setWrite({
             taskId,
+            action,
             status: 'failed',
             message: error instanceof Error ? error.message : String(error),
             code: 'network-error',
@@ -3316,6 +3645,40 @@ window.__ModuleLoader__.load({
         } finally {
           writingRef.current = false;
         }
+      }, []);
+
+      /**
+       * 完成一条动作（滴答勾选，单口径）。
+       * @param {string} taskId - 目标动作 id。
+       * @returns {Promise<void>} 完成。
+       */
+      const completeTask = React.useCallback(
+        (taskId) => runWrite(taskId, 'complete', {}),
+        [runWrite],
+      );
+
+      /**
+       * 改期一条动作（写新的完成时限，粒度到天）。
+       * @param {string} taskId - 目标动作 id。
+       * @param {string} dueDate - 新的完成时限（`YYYY-MM-DD`）。
+       * @returns {Promise<void>} 改完。
+       */
+      const rescheduleTask = React.useCallback(
+        (taskId, dueDate) => runWrite(taskId, 'reschedule', { dueDate }),
+        [runWrite],
+      );
+
+      /**
+       * 跳过一条动作：**零写入**。
+       *
+       * Host 那侧没有「跳过」这个写口——发了过去只会被拒掉。
+       * 这里只记一笔「本次会话里不再看见它」，不请求、不落盘。
+       * @param {string} taskId - 目标动作 id。
+       * @returns {void} 无。
+       */
+      const skipTask = React.useCallback((taskId) => {
+        if (typeof taskId !== 'string' || taskId.length === 0) return;
+        setSkipped((previous) => (previous.includes(taskId) ? previous : [...previous, taskId]));
       }, []);
       /* v2:write end */
       /* gtd:04 点主攻带上的条目，开的就是那条便贴的抽屉 */
@@ -3405,9 +3768,13 @@ window.__ModuleLoader__.load({
             onOpenNote: openNoteById,
             /* 外壳把刷新也递下去：视图要用（写口写完要重画）时自己叫，不用去碰取数 */
             onReload: load,
-            /* v2:write 完成写口：状态与回调都在外壳（快照也在这儿）。 */
+            /* v2:write 写口：状态与回调都在外壳（快照也在这儿）。
+               「跳过」只是本次会话里的视图状态——也住在外壳，切视图不丢，刷新页面才回来。 */
             write,
             onComplete: completeTask,
+            onReschedule: rescheduleTask,
+            onSkip: skipTask,
+            skipped,
           }),
         ),
         /* v2:shell end */        /* gtd:05 抽屉挂在画布**外面**、面板里面：它是覆盖层，不动画布版面 */

@@ -202,7 +202,7 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 | 层 | DOM 角色 | 内容 |
 |---|---|---|
 | ① 顶部常驻 | `focus-top` / `focus-stat`（`data-stat="daily｜remaining｜deep-quota"`） | 今日日清几笔未还、今日剩余可排时间、深度名额；下面一行 `focus-capacity-bar` 里是 `focus-capacity-asof`（「容量参数定于 <日期>」，没初始化时 `data-state="unset"`）与 `focus-capacity-outside`（窗口外的那笔日清不占可排时间） |
-| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`（来源标记 `focus-card-requirement-source`，写成「来自记录页」）、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity`；事实行之下是写口 `focus-card-actions` / `focus-card-complete` |
+| ② 行动卡（主位） | `focus-card`（`data-note-ref`） | 工作内容 `focus-card-title`、完成时限 `focus-card-due`、完成要求 `focus-card-requirement`（来源标记 `focus-card-requirement-source`，写成「来自记录页」）、预计耗时 `focus-card-estimate`、容量提示 `focus-card-capacity`；事实行之下是三个控件 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入） |
 | ③「接下来」窄条 | `focus-next` / `focus-next-item`（`data-note-ref`） | 只写标题与时限；**点一条即换主卡**（视图内状态，不写任何数据） |
 | ④ 下钻层 | `focus-drill-entry` / `focus-drill` / `focus-back` | 点开后是 v1 的六箱画布原样，带一个「回到焦点」 |
 
@@ -241,6 +241,45 @@ node "$APPDATA/npm/node_modules/@suibiji/dida-cli/dist/index.js" \
 - 目标 id 取自卡上的 `data-note-ref`（焦点视图不占用 `data-note-id`）。
 - 请求体：`{ "action": "complete", "taskId": "<动作 id>", "params": {} }`（键是英文）。
 - 完成口径不变：完成 = 滴答勾选，单口径（没有「已核」「撤销完成」「批量勾选」）。
+
+## 改期与跳过（Client 侧，issue #10）
+
+卡脚上那三个控件**位置分开**、不合并成一个「推迟」：完成（实心主按钮）与改期（描边次按钮）
+是两个写口，跳过是**零写入**的弱化项，排在虚线分隔 `focus-card-actions-sep` 之后，
+自己还带着一句「零写入」（`focus-card-skip-note`）。
+
+### 改期（写口）
+
+点 `focus-card-reschedule` 打开日期编辑器 `focus-card-reschedule-editor`：
+
+| 元素 | DOM | 说明 |
+|---|---|---|
+| 日期输入 | `focus-card-reschedule-date` | `<input type="date">`：值形状天生是 `YYYY-MM-DD`，**收不下带时刻的字符串**（Host 会当场拒） |
+| 提交 | `focus-card-reschedule-submit` | 值在**提交那一刻**从 DOM 上读；不成立就不发请求，改说 `focus-reschedule-need-date` |
+| 取消 | `focus-card-reschedule-cancel` | 收摊，**不写任何东西**（开合是视图内状态） |
+
+- 默认值是这条动作当前的完成时限（`focus.card.dueDate`）；**没有期限就是空的**——不替用户猜一个日子。
+- 请求体：`{ "action": "reschedule", "taskId": "<动作 id>", "params": { "dueDate": "YYYY-MM-DD" } }`
+  （`params` 里只有 `dueDate`，别的键 Host 一律拒）。
+- 写成功：响应里的 `snapshot` **整体替换**面板当前的快照 → 主卡与「接下来」按**新的期限**重排
+  （**Host 排好**，Client 不自己重排），不再发一次读请求。
+- 写成功但刷新失败（`snapshot === null` 且有 `refreshError`）：说「已改期，但刷新失败」
+  （`focus-reschedule-refresh-failed`）并给一次手动刷新（`focus-reschedule-refresh`）。
+  **不能说成写失败**（用户会以为没改上而重复点）。
+- 写失败：`focus-reschedule-error`（带 `data-code`）摆出 `error.message` 与 `error.code`；
+  **不在本地改期限**，也不把它画成已改期。
+- 没登录：走**既有的**未登录那条路（`login-prompt` / `login-command` / `retry`）。
+- 等待与防重复点击与「完成」一致：`focus-card-reschedule[data-state="pending"]` 按钮禁用、
+  文案「改期中…」；连点**不重复写**。
+
+### 跳过（零写入）
+
+- 点 `focus-card-skip` = **本次会话里**这条不再出现在焦点里：主卡自动换下一件，
+  这条从「接下来」队列里去掉。
+- **不发任何请求**：Host 那侧没有 `skip` 这个动作，发过去只会被拒（`invalid-argument`）。
+- **不写任何东西**：连 localStorage 都不碰（工作台不写任何本地文件，ADR-0006）。
+- **只活在内存里**：刷新页面它就回来（状态住在面板的 React state 里，不落盘）。
+- 跳过后 `focus-skip-notice` 说清楚它去哪了。
 
 ## 写口：完成与改期（`POST /gtd-workbench/actions`）
 
