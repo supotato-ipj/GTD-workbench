@@ -621,14 +621,24 @@ GTD 的两分钟规则：**两分钟能做完就当场做掉，别放进系统�
 「启用: false」是合法配置（用户主动关掉这条规则），不是降级。
 每次请求都重新读盘：改完配置 → 刷新页面 → 立刻生效。
 
-### Client 侧要显示什么
+### Client 侧怎么显示（ticket/11-client 已落地）
 
-- 主卡是**两分钟卡**（`focus.card.twoMinute === true`）时，显示一句引导：
-  **「直接做掉、别判定」**（具体文案与语气由 Client 定，Host 不给文案）。
-- 卡片要有区别：两分钟卡与正常动作不是一回事（估时两分钟、来源是收集箱），
-  建议给一个明显不同的样式或角标，别让它看起来像一条普通事务。
-- 两分钟卡**完成后**：它从收集箱与焦点里消失，主卡换成下一件——
-  按既有的「完成」写口与动效处理即可，Host 侧不新增状态。
+- 主卡是**两分钟卡**（`focus.card.twoMinute === true`）时，卡面显示一句引导：
+  **「两分钟卡：直接做掉、别判定」**（英文 `Two-minute card: do it now, skip deciding`）。
+  Client 侧**不重算资格**——能不能抢主卡位由 Host 定，Client 只按这个标记显示。
+- **DOM 标记**（可断言）：
+  - 主卡根：`[data-role="focus-card"][data-state="two-minute"]`（正常行动卡是 `data-state="normal"`）；
+  - 引导片：`[data-role="focus-card-two-minute"][data-state="two-minute"]`，就一个元素、一句话。
+- **视觉**：引导片占**时间档角标那一格**（两分钟卡本来就没有时间档），
+  样式是**描边的浅色片**（不是实心色块）；卡面描边比正常行动卡略强一档。
+  整体克制——主卡的视觉重心仍在工作内容那一行，行动卡的信息量不增不减。
+- **词表**：新登记一个键 `focusCardTwoMinute`，四处登记
+  （`client.js` 的 zh/en 文案表、`app/locale/zh.json`、`app/locale/en.json`）。
+- **完成后**：走**既有的「完成」写口**——`POST /gtd-workbench/actions`，响应里带着新快照，
+  面板整体替换快照。主卡因此自动换成下一件，两分钟卡既不在焦点、也不在六箱画布的收集箱里
+  （它是被勾完成的捕获，不是被「判定」进某个清单的）。
+  **Client 侧不为它做任何特殊处理**：既有完成按钮与既有快照整体替换机制就够了。
+- 测试：`app/test/seam-b-two-minute.test.js`（引导与标记、完成后消失）。
 
 ### 代码位置
 
@@ -636,4 +646,6 @@ GTD 的两分钟规则：**两分钟能做完就当场做掉，别放进系统�
   `eligibilityOf` 的收集箱分支 / `focusGuideOf`）。
 - 快照接线：`app/lib/snapshot.js`（`buildSnapshot` 的 `twoMinutePolicy` 选项）。
 - 本机配置：`app/lib/config.js`（`readTwoMinutePolicy`）。
-- 测试：`app/test/two-minute.test.js`（纯函数）、`app/test/seam-a-two-minute.test.js`（响应体）。
+- Client 侧呈现：`app/client.js`（`FocusActionCard` 的引导片与 `data-state`）。
+- 测试：`app/test/two-minute.test.js`（纯函数）、`app/test/seam-a-two-minute.test.js`（响应体）、
+  `app/test/seam-b-two-minute.test.js`（DOM）。
