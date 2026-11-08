@@ -1765,6 +1765,8 @@ window.__ModuleLoader__.load({
             top: 0,
             right: 0,
             bottom: 0,
+            /* 明细是面板级覆盖层：必须压在工位物件（便签叠／小旗／印章，z-index 2–6）上面。 */
+            zIndex: 20,
             width: '380px',
             maxWidth: '100%',
             display: 'flex',
@@ -4346,7 +4348,7 @@ window.__ModuleLoader__.load({
 /* v3:desk 焦点视图是像素工位：工位子树自带字体与色板，**不用**宿主令牌（ADR-0012）。
    下面这一段（从 .gtd-desk 开始）里不出现 --dsw-alias-*；六箱画布与下钻层照旧走宿主令牌。 */
 .gtd-desk, .gtd-desk * { font-family: 'GtdPixelFusion', 'Ark Pixel 12px', ui-monospace, monospace; }
-.gtd-desk { color: var(--gtd-paper); -webkit-font-smoothing: none; font-synthesis: none; }
+.gtd-desk { color: var(--gtd-paper); -webkit-font-smoothing: none; font-synthesis: none; isolation: isolate; }
 .gtd-desk__scene { display: block; }
 .gtd-desk__wall-upper { background: var(--gtd-wall-upper); }
 .gtd-desk__wall { background: var(--gtd-wall); }

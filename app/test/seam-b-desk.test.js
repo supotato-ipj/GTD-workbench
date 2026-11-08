@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
+import { createClientModule } from './helpers/client-harness.js';
 import { createFetchController, mountPanel } from './helpers/client-interaction.js';
 import { focusSnapshotUnderTest, withFocus } from './helpers/focus-fixture.js';
 
@@ -312,6 +313,24 @@ test('工位：按下完成先盖印章，写口照旧发一次 POST', async () 
     assert.equal(stamp.getAttribute('data-stamp'), 'complete');
     assert.equal(controller.calls.length, 1, '盖章把写口吞掉了（完成必须发一次 POST）');
     assert.equal(JSON.parse(controller.calls[0].init.body).action, 'complete');
+  } finally {
+    await panel.cleanup();
+  }
+});
+
+test('工位：明细抽屉盖在工位物件上面（工位自成层叠上下文）', async () => {
+  const snapshot = await focusSnapshotUnderTest();
+  const panel = await mountPanel({ clientPath, props: { initialSnapshot: snapshot } });
+  try {
+    await panel.click(panel.document.querySelector('[data-role="focus-card-open"]'));
+    const drawer = panel.document.querySelector('[data-role="drawer"]');
+    assert.ok(drawer, '点标题没有打开抽屉');
+    // 明细是面板级覆盖层：z-index 必须高于工位内部的便签叠（2）／小旗（3）／印章（6）。
+    const drawerZ = Number(drawer.style.zIndex);
+    assert.ok(Number.isFinite(drawerZ) && drawerZ >= 10, `抽屉的 z-index 不够高：${drawer.style.zIndex}`);
+    // 工位自成层叠上下文：内部 z-index 再高也穿不到抽屉上面。
+    const { module } = createClientModule(clientPath);
+    assert.match(module.styles, /\.gtd-desk \{[^}]*isolation:\s*isolate/);
   } finally {
     await panel.cleanup();
   }
