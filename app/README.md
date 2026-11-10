@@ -212,7 +212,7 @@ ADR-0012 有修订节）画成一个**像素工位**：微俯视角，一张桌�
 | 桌面场景 | `gtd-desk-scene` | 随包的 600×420 像素场景（台灯、熄屏显示器、杯子、笔筒、桌面阴影）；卡是 DOM，不在图里 |
 | 台灯与深度名额 | `gtd-desk-lamp` / `gtd-desk-quota`（含 `focus-stat[data-stat="deep-quota"]`） | 灯座上一枚方形指示块：用掉就熄灭；数值仍带 `data-used` / `data-total` |
 | 桌左小屏 | `gtd-desk-screen` | 日期 `gtd-desk-screen-date`、**预计耗时** `focus-card-estimate`、**装不装得下** `focus-card-capacity`（`data-state="fits｜no｜unknown"`，只说装不装得下）、**可排多少分钟** `focus-stat[data-stat="remaining"]`；卡上不再写耗时与容量，「剩余」这个数只在这一行出现一次（ADR-0012 修订 2） |
-| 行动卡（主位） | `focus-card`（`data-note-ref`） | 竖版纸卡：标题 `focus-card-title` / `focus-card-open`、时限标签 `focus-card-due`（逾期另标 `focus-card-overdue`）、完成要求 `focus-card-requirement`（来源 `focus-card-requirement-source`）、写口 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入）／`focus-card-skip-note`、卡脚 `focus-card-foot`（项目名 + 入口）。两分钟卡另贴一张小纸条 `focus-card-two-minute` |
+| 行动卡（主位） | `focus-card`（`data-note-ref`） | 竖版纸卡（200×280，flex 列）：标题 `focus-card-title` / `focus-card-open`（字号按缩放取清晰档，最多三行）、时限标签 `focus-card-due`（逾期另标 `focus-card-overdue`）、完成要求 `focus-card-requirement`（来源 `focus-card-requirement-source`；标签 `gtd-desk__card-req-key` 一行、正文整幅在下一行，整块限高可滚 `gtd-desk__card-reqscroll`，自绘滑轨 `gtd-desk__card-sbar`）、写口 `focus-card-actions`：`focus-card-complete`（实心）／`focus-card-reschedule`（描边）／`focus-card-actions-sep` + `focus-card-skip`（弱化，零写入）／`focus-card-skip-note`、卡脚 `focus-card-foot`（项目名 + 入口，单行、项目名省略号）。两分钟卡另贴一张小纸条 `focus-card-two-minute` |
 | 卡夹（原「接下来」） | `gtd-desk-holder` / `focus-next` / `focus-next-item`（`data-note-ref`） | 立式卡夹，每张只露标题与时限；**点一张抽到主位**（视图内状态，零写入） |
 | 便签叠（今日日清） | `gtd-desk-notes` / `focus-stat[data-stat="daily"]` | 一叠未还的日清便签；`focus-capacity-bar` 里的「容量参数定于 <日期>」（`focus-capacity-asof`，未初始化 `data-state="unset"`）与「窗口外那笔日清不占可排时间」（`focus-capacity-outside`）收在叠里，**点开才看见** |
 | 小旗（到期没回） | `gtd-desk-flag` / `focus-reminders` / `focus-reminder` | 桌上一面旗，旗面写「等回 N」；点开才列出是哪几条 |
@@ -265,8 +265,14 @@ ADR-0012 有修订节）画成一个**像素工位**：微俯视角，一张桌�
 - **窄窗**：窗口比 600 美术像素还窄时（`data-layout="narrow"`），先把卡加宽、让出桌左小屏那一列；
   卡夹／便签叠／小旗收起来（换卡仍可左右划），桌沿三件套（标牌／抽屉／开关）按可见宽度重新排。
   不把字号压到 12 以下。
-- **长标题**：卡内宽 180 美术像素，标题最多三行（`-webkit-line-clamp: 3`），
+- **卡面长文本（issue #14）**：卡身是 flex 列——标题、完成时限固定在卡面，**只有完成要求区可滚**
+  （`gtd-desk__card-reqscroll`，自绘 4 美术像素点阵滑轨 `gtd-desk__card-sbar`）；完成要求的标签
+  在上、正文在下（上下组合，正文用满卡宽）；正文不再三行截断，滚到底能读到「来自…」来源标记。
+  写口与卡脚在普通文档流里，不再绝对定位压住正文（ADR-0012 修订 2026-11-10）。
+- **标题字号**：目标 16 美术像素，按缩放取最近清晰档——k=3 → 16、k=2 → 18、k=1 → 24
+  （清晰档的硬条件是 `字号 × 缩放` 为 12 的整数倍）；标题最多三行（`-webkit-line-clamp: 3`），
   完整标题在 `title` 与 `aria-label` 上，抽屉里能读到全文。
+- **卡脚单行**：项目名超出用省略号，完整名在 `title` 与抽屉里；卡脚高度不再随项目名折行增长。
 
 ## 卡脚的项目指针（规格故事 22–24）
 

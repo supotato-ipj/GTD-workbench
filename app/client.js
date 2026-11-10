@@ -2219,6 +2219,7 @@ window.__ModuleLoader__.load({
       '--gtd-shadow-card': 'rgba(0, 0, 0, 0.5)',
       '--gtd-shadow-note': 'rgba(0, 0, 0, 0.35)',
       '--gtd-ink-line': 'rgba(34, 29, 22, 0.25)',
+      '--gtd-sbar-track': 'rgba(34, 29, 22, 0.10)',
       '--gtd-light-strong': 'rgba(255, 206, 138, 0.16)',
       '--gtd-light-mid': 'rgba(255, 206, 138, 0.1)',
       '--gtd-light-soft': 'rgba(255, 206, 138, 0.05)',
@@ -2244,6 +2245,27 @@ window.__ModuleLoader__.load({
      * @param {{ width?: number, height?: number, dpr?: number } | null | undefined} input - 视口。
      * @returns {object} 版面：`scale`、`unit`（CSS px / 美术 px）、画布与工位尺寸、卡宽。
      */
+    /**
+     * 标题字号档：目标 16 美术像素，按当前缩放落到「最近的清晰档」。
+     *
+     * 点阵字只在 `字号 × 缩放` 是 12 的整数倍时锐利（12px 点阵字的老规矩）。
+     * 16 这档在 k=3 清晰；k=2 退到 18；k=1 没有中间档，退回 24——
+     * 宁可大一点，也不把标题压到和正文同号（见 ADR-0012 修订 2026-11-10）。
+     * @param {number} scale - 缩放倍数（整数 1/2/3）。
+     * @returns {{ size: number, line: number }} 字号与行高（美术像素）。
+     */
+    function deskTitleTierOf(scale) {
+      for (const tier of [
+        { size: 16, line: 17 },
+        { size: 18, line: 20 },
+        { size: 20, line: 22 },
+        { size: 24, line: 26 },
+      ]) {
+        if ((tier.size * scale) % 12 === 0) return tier;
+      }
+      return { size: 24, line: 26 };
+    }
+
     function deskGeometryOf(input) {
       const width = positiveNumber(input === null || input === undefined ? undefined : input.width, 1024);
       const height = positiveNumber(input === null || input === undefined ? undefined : input.height, 768);
@@ -2275,6 +2297,8 @@ window.__ModuleLoader__.load({
       const cardLeft = narrow
         ? Math.max(166, Math.floor(viewWidth / 2 - cardWidth / 2))
         : DESK_ART.card.centerX + originX - Math.floor(cardWidth / 2);
+      /* 标题字号档跟着缩放走：见 deskTitleTierOf 的说明。 */
+      const titleTier = deskTitleTierOf(scale);
       return {
         scale,
         unit,
@@ -2288,6 +2312,8 @@ window.__ModuleLoader__.load({
         narrow,
         cardWidth,
         cardLeft,
+        titleSize: titleTier.size,
+        titleLine: titleTier.line,
       };
     }
 
@@ -2837,6 +2863,38 @@ window.__ModuleLoader__.load({
       const [rescheduleOpen, setRescheduleOpen] = React.useState(false);
       const [needDate, setNeedDate] = React.useState(false);
       const dateInputRef = React.useRef(null);
+      /* 完成要求区的点阵滑轨：滚动位置 → 滑轨滑块高度与位置（直接写 DOM，不进 state）。 */
+      const scrollerRef = React.useRef(null);
+      const sbarRef = React.useRef(null);
+      const thumbRef = React.useRef(null);
+      React.useEffect(() => {
+        const scroller = scrollerRef.current;
+        const sbar = sbarRef.current;
+        const thumb = thumbRef.current;
+        if (scroller === null || sbar === null || thumb === null) return () => {};
+        const sync = () => {
+          const height = scroller.clientHeight;
+          const full = scroller.scrollHeight;
+          const on = full > height + 2;
+          sbar.dataset.on = on ? 'true' : 'false';
+          if (!on) return;
+          const thumbHeight = Math.max(8, Math.round((height * height) / full));
+          const top = Math.round((scroller.scrollTop / full) * height);
+          thumb.style.height = `${thumbHeight}px`;
+          thumb.style.top = `${Math.min(height - thumbHeight, top)}px`;
+        };
+        sync();
+        scroller.addEventListener('scroll', sync, { passive: true });
+        let observer = null;
+        if (typeof ResizeObserver === 'function') {
+          observer = new ResizeObserver(sync);
+          observer.observe(scroller);
+        }
+        return () => {
+          scroller.removeEventListener('scroll', sync);
+          if (observer !== null) observer.disconnect();
+        };
+      }, [card.id, props.geometry.scale, requirementText, requirementSource]);
       const initialDueDate =
         typeof card.dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(card.dueDate) ? card.dueDate : '';
       const lastWriteRef = React.useRef(null);
@@ -2940,7 +2998,7 @@ window.__ModuleLoader__.load({
               onClick: () => {
                 if (typeof props.onOpenNote === 'function') props.onOpenNote(card);
               },
-              style: deskText(24, 26),
+              style: deskText(props.geometry.titleSize ?? 24, props.geometry.titleLine ?? 26),
             },
             card.title,
           ),
@@ -2978,35 +3036,55 @@ window.__ModuleLoader__.load({
             ? null
             : h(
                 'div',
-                { className: 'gtd-desk__card-fact', 'data-role': 'focus-card-fact', 'data-fact': 'requirement' },
+                {
+                  className: 'gtd-desk__card-fact gtd-desk__card-reqfact',
+                  'data-role': 'focus-card-fact',
+                  'data-fact': 'requirement',
+                },
+                /* 完成要求：标签一行、正文整幅在下一行；整块限高可滚（ADR-0012 修订）。 */
                 h(
                   'div',
-                  { className: 'gtd-desk__card-req' },
+                  { className: 'gtd-desk__card-reqscroll', ref: scrollerRef },
                   h(
-                    'span',
-                    { className: 'gtd-desk__card-req-key', style: deskText(12, 18) },
-                    t('focusCardRequirementLabel'),
+                    'div',
+                    { className: 'gtd-desk__card-req' },
+                    h(
+                      'span',
+                      { className: 'gtd-desk__card-req-key', style: deskText(12, 18) },
+                      t('focusCardRequirementLabel'),
+                    ),
+                    h(
+                      'p',
+                      {
+                        className: 'gtd-desk__card-req-text',
+                        'data-role': 'focus-card-requirement',
+                        style: deskText(12, 18),
+                      },
+                      requirementText,
+                      requirementSource === null
+                        ? null
+                        : h(
+                            'span',
+                            {
+                              className: 'gtd-desk__card-req-source',
+                              'data-role': 'focus-card-requirement-source',
+                              style: deskText(12, 18),
+                            },
+                            fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
+                          ),
+                    ),
                   ),
-                  h(
-                    'p',
-                    {
-                      className: 'gtd-desk__card-req-text',
-                      'data-role': 'focus-card-requirement',
-                      style: deskText(12, 18),
-                    },
-                    requirementText,
-                    requirementSource === null
-                      ? null
-                      : h(
-                          'span',
-                          {
-                            className: 'gtd-desk__card-req-source',
-                            'data-role': 'focus-card-requirement-source',
-                            style: deskText(12, 18),
-                          },
-                          fillTemplate(t('focusRequirementFrom'), { source: requirementSource }),
-                        ),
-                  ),
+                ),
+                /* 卡上自绘的点阵滑轨：不用系统滚动条，随滚动同步滑块。 */
+                h(
+                  'div',
+                  {
+                    className: 'gtd-desk__card-sbar',
+                    'data-on': 'false',
+                    'aria-hidden': 'true',
+                    ref: sbarRef,
+                  },
+                  h('span', { className: 'gtd-desk__card-sbar-thumb', ref: thumbRef }),
                 ),
               ),
         ),
@@ -3196,10 +3274,15 @@ window.__ModuleLoader__.load({
           : h(
               'div',
               { className: 'gtd-desk__card-foot', 'data-role': 'focus-card-foot', style: deskText(12, 16) },
-              h('span', { 'data-role': 'focus-card-foot-label' }, `${t('focusCardFootProjectLabel')} `),
+              h('span', { className: 'gtd-desk__card-foot-label', 'data-role': 'focus-card-foot-label' }, `${t('focusCardFootProjectLabel')} `),
               h(
                 'span',
-                { 'data-role': 'focus-card-foot-project', 'data-record': project.record },
+                {
+                  className: 'gtd-desk__card-foot-project',
+                  'data-role': 'focus-card-foot-project',
+                  'data-record': project.record,
+                  title: project.name,
+                },
                 project.name,
               ),
               h(
@@ -4485,13 +4568,15 @@ window.__ModuleLoader__.load({
 .gtd-desk__power:hover { background: var(--gtd-power-hover); color: var(--gtd-plaque-ink-active); }
 .gtd-desk__card {
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   color: var(--gtd-ink);
   background-color: var(--gtd-paper);
   background-size: calc(var(--gtd-u) * 16);
   background-repeat: repeat;
   image-rendering: pixelated;
   border: calc(var(--gtd-u) * 1) solid var(--gtd-card-edge);
-  padding: calc(var(--gtd-u) * 10);
+  padding: calc(var(--gtd-u) * 10) calc(var(--gtd-u) * 10) calc(var(--gtd-u) * 8);
   box-shadow:
     calc(var(--gtd-u) * 5) calc(var(--gtd-u) * 7) 0 var(--gtd-shadow-card),
     inset calc(var(--gtd-u) * 1) calc(var(--gtd-u) * 1) 0 var(--gtd-highlight);
@@ -4519,7 +4604,7 @@ window.__ModuleLoader__.load({
   );
   pointer-events: none;
 }
-.gtd-desk__card-title { margin: calc(var(--gtd-u) * 10) 0 0; font-weight: 400; }
+.gtd-desk__card-title { flex: none; margin: calc(var(--gtd-u) * 10) 0 0; font-weight: 400; }
 .gtd-desk__card-open {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -4536,24 +4621,52 @@ window.__ModuleLoader__.load({
   cursor: pointer;
 }
 .gtd-desk__card-open:hover { text-decoration: underline; }
-.gtd-desk__card-due-row { margin-top: calc(var(--gtd-u) * 8); }
+.gtd-desk__card-due-row { margin-top: calc(var(--gtd-u) * 6); }
 .gtd-desk__card-tag { display: inline-block; padding: 0 calc(var(--gtd-u) * 4); border: calc(var(--gtd-u) * 1) solid var(--gtd-ink); }
 .gtd-desk__card-tag[data-overdue="true"] { color: var(--gtd-stamp); border-color: var(--gtd-stamp); }
-.gtd-desk__card-req { display: flex; gap: calc(var(--gtd-u) * 6); margin-top: calc(var(--gtd-u) * 10); }
-.gtd-desk__card-req-key { flex: none; color: var(--gtd-ink-dim); }
-.gtd-desk__card-req-text {
-  margin: 0;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
+/* 卡身是 flex 列：标题 → 事实（时限 + 可滚要求）→ 写口 → 卡脚。
+   标题与时限固定在卡面；完成要求单独一块、限高可滚（ADR-0012 修订 2026-11-10）。
+   写口与卡脚回到普通文档流，不再绝对定位压住正文。 */
+.gtd-desk__card-facts {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
+.gtd-desk__card-reqfact {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  margin-top: calc(var(--gtd-u) * 8);
+}
+.gtd-desk__card-reqscroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 卡上不出现系统滚动条：用自绘的点阵滑轨 */
+  scrollbar-width: none;
+}
+.gtd-desk__card-reqscroll::-webkit-scrollbar { display: none; }
+.gtd-desk__card-req { display: block; }
+.gtd-desk__card-req-key { display: block; color: var(--gtd-ink-dim); }
+.gtd-desk__card-req-text { margin: 0; }
 .gtd-desk__card-req-source { margin-left: calc(var(--gtd-u) * 6); color: var(--gtd-ink-dim); }
-.gtd-desk__card-actions {
+.gtd-desk__card-sbar {
   position: absolute;
-  left: calc(var(--gtd-u) * 10);
-  right: calc(var(--gtd-u) * 10);
-  bottom: calc(var(--gtd-u) * 28);
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--gtd-u) * 4);
+  background: var(--gtd-sbar-track);
+  display: none;
+}
+.gtd-desk__card-sbar[data-on="true"] { display: block; }
+.gtd-desk__card-sbar-thumb { position: absolute; left: 0; width: 100%; background: var(--gtd-ink-dim); }
+.gtd-desk__card-actions {
+  flex: none;
+  margin-top: calc(var(--gtd-u) * 6);
   display: grid;
   grid-template-columns: auto 1fr;
   gap: calc(var(--gtd-u) * 4);
@@ -4606,18 +4719,20 @@ window.__ModuleLoader__.load({
 }
 .gtd-desk__date { font: inherit; color: var(--gtd-ink); background: var(--gtd-paper); border: calc(var(--gtd-u) * 1) solid var(--gtd-ink); padding: 0 calc(var(--gtd-u) * 2); }
 .gtd-desk__card-foot {
-  position: absolute;
-  left: calc(var(--gtd-u) * 10);
-  right: calc(var(--gtd-u) * 10);
-  bottom: calc(var(--gtd-u) * 8);
+  flex: none;
   display: flex;
   align-items: baseline;
   gap: calc(var(--gtd-u) * 6);
-  color: var(--gtd-ink-dim);
-  border-top: calc(var(--gtd-u) * 1) solid var(--gtd-ink-line);
+  margin-top: calc(var(--gtd-u) * 4);
   padding-top: calc(var(--gtd-u) * 2);
+  border-top: calc(var(--gtd-u) * 1) solid var(--gtd-ink-line);
+  color: var(--gtd-ink-dim);
+  white-space: nowrap;
+  overflow: hidden;
 }
-.gtd-desk__card-foot-link { margin-left: auto; border: 0; background: none; color: var(--gtd-ink-dim); font: inherit; cursor: pointer; padding: 0; }
+.gtd-desk__card-foot-label { flex: none; }
+.gtd-desk__card-foot-project { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.gtd-desk__card-foot-link { flex: none; border: 0; background: none; color: var(--gtd-ink-dim); font: inherit; cursor: pointer; padding: 0; }
 .gtd-desk__two-minute {
   position: absolute;
   top: calc(var(--gtd-u) * -6);
@@ -4762,6 +4877,7 @@ window.__ModuleLoader__.load({
         installStyles,
         summarizeForMotion,
         motionsFor,
+        deskTitleTierOf,
       },
       /** 样式表原文，测试直接核对它写了什么。 */
       styles: STYLE_TEXT,
